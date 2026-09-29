@@ -18,16 +18,8 @@ import { VEHICLES } from "../sim/traffic.mjs";
 import { buildSlices, createCamera, drawRoad } from "../web/js/road.mjs";
 import { drawBuilding } from "../web/js/props.mjs";
 import { drawVehicle } from "../web/js/vehicles.mjs";
+import { withDom } from "./helpers/dom.mjs";
 import { assertBalanced, assertSane, fingerprint, gradientStops, spyCtx, widestX } from "./helpers/spy-ctx.mjs";
-
-/** 一块假的画布：`road.mjs` 的沥青颗粒要从 `document` 上现取一张平铺贴图。 */
-function withDom(fn) {
-  const prev = globalThis.document;
-  globalThis.document = {
-    createElement: () => ({ width: 0, height: 0, getContext: () => spyCtx().ctx }),
-  };
-  try { return fn(); } finally { globalThis.document = prev; }
-}
 
 /** 一台相机 + 一条视线。`meZ` 是"我"在路上的位置——0 就是发车线。 */
 function rig(mode, meZ) {

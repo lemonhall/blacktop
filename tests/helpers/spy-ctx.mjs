@@ -26,6 +26,29 @@ export function spyCtx() {
   const invalid = [];
   const fills = [];
   const strokes = [];
+  // ---- 变换矩阵 ----
+  // 每一笔都连**当时的变换**一起记下来。理由：`tube()` 这类零件是"先 translate
+  // 再 rotate"画出来的，它记下来的坐标是**局部**的——一根两米长的管子在第一段里
+  // 就是一条 x 从 0 到 2 的路径。只有把变换一起带上，"这幅画占多宽"才量得准，
+  // 不然就会把一个落在原点的局部坐标当成"画到两米外去了"。
+  const I = [1, 0, 0, 1, 0, 0];
+  let m = I.slice();
+  const stack = [];
+  const mmul = (a, b) => [
+    a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1],
+    a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3],
+    a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5],
+  ];
+  const CTM = {
+    translate: (x, y) => { m = mmul(m, [1, 0, 0, 1, x, y]); },
+    scale: (x, y) => { m = mmul(m, [x, 0, 0, y, 0, 0]); },
+    rotate: a => { m = mmul(m, [Math.cos(a), Math.sin(a), -Math.sin(a), Math.cos(a), 0, 0]); },
+    transform: (a, b, c, d, e, f) => { m = mmul(m, [a, b, c, d, e, f]); },
+    setTransform: (...a) => {
+      m = a.length >= 6 ? a.slice(0, 6).map(Number) : I.slice();
+    },
+    resetTransform: () => { m = I.slice(); },
+  };
   // 渐变要连**颜色停靠点**一起记账：楼房的大气透视（越远越化进天色）没有几何上
   // 的可断言处，能验的只有"这一档雾量下，墙面用的是哪个颜色"。
   const makeGradient = () => {
@@ -43,7 +66,7 @@ export function spyCtx() {
     for (const a of args) {
       if (typeof a === "number" && !Number.isFinite(a)) invalid.push(`${name}(${args.join(",")})`);
     }
-    ops.push([name, args]);
+    ops.push([name, args, m.slice()]);
     // 顺手记下"这一笔用的是哪个颜色"。颜色本身也是画法契约的一部分，而且是最容易
     // 悄无声息退化的一项（比如迎面来的车必须有大灯、路面必须用过路肩色）。
     if (name === "fill" || name === "fillRect" || name === "fillText") fills.push(raw.fillStyle);
@@ -62,6 +85,12 @@ export function spyCtx() {
     createPattern: (...a) => { check("createPattern", a); return null; },
   };
   for (const name of METHODS) raw[name] = (...a) => check(name, a);
+  // 变换类指令除了记账，还要真的推进矩阵；save/restore 管矩阵栈。
+  for (const name of Object.keys(CTM)) {
+    raw[name] = (...a) => { check(name, a); CTM[name](...a); };
+  }
+  raw.save = () => { check("save", []); stack.push(m.slice()); };
+  raw.restore = () => { check("restore", []); if (stack.length) m = stack.pop(); };
 
   const ctx = new Proxy(raw, {
     set(target, key, value) {
@@ -127,24 +156,49 @@ export const fingerprint = ops => ops
  */
 export function bounds(ops) {
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  /** 一件东西的坐标要**先过它当时那一层变换**再拿来量（见 `spyCtx` 里的矩阵）。 */
+  const at = (ctm, x, y) => (ctm
+    ? [ctm[0] * x + ctm[2] * y + ctm[4], ctm[1] * x + ctm[3] * y + ctm[5]]
+    : [x, y]);
+  /** 变换把单位长度拉长了多少（圆弧的半径要跟着缩） */
+  const axis = (ctm, sx, sy) => {
+    if (!ctm) return [sx, sy];
+    return [sx * Math.hypot(ctm[0], ctm[1]), sy * Math.hypot(ctm[2], ctm[3])];
+  };
   const put = (x, y) => {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     if (!Number.isFinite(x0)) { x0 = x1 = x; y0 = y1 = y; return; }
     x0 = Math.min(x0, x); x1 = Math.max(x1, x);
     y0 = Math.min(y0, y); y1 = Math.max(y1, y);
   };
-  for (const [name, args] of ops) {
-    if (name === "moveTo" || name === "lineTo") put(args[0], args[1]);
+  for (const [name, args, ctm] of ops) {
+    if (name === "moveTo" || name === "lineTo") {
+      const [x, y] = at(ctm, args[0], args[1]);
+      put(x, y);
+    }
     else if (name === "rect" || name === "fillRect" || name === "strokeRect" || name === "clearRect") {
-      put(args[0], args[1]); put(args[0] + args[2], args[1] + args[3]);
+      for (const [x, y] of [[args[0], args[1]], [args[0] + args[2], args[1] + args[3]]]) {
+        const [wx, wy] = at(ctm, x, y);
+        put(wx, wy);
+      }
     } else if (name === "arc") {
-      put(args[0] - args[2], args[1] - args[2]); put(args[0] + args[2], args[1] + args[2]);
+      const [rx, ry] = axis(ctm, args[2], args[2]);
+      const [cx, cy] = at(ctm, args[0], args[1]);
+      put(cx - rx, cy - ry); put(cx + rx, cy + ry);
     } else if (name === "ellipse") {
-      put(args[0] - args[2], args[1] - args[3]); put(args[0] + args[2], args[1] + args[3]);
+      const [rx, ry] = axis(ctm, args[2], args[3]);
+      const [cx, cy] = at(ctm, args[0], args[1]);
+      put(cx - rx, cy - ry); put(cx + rx, cy + ry);
     } else if (name === "quadraticCurveTo") {
-      put(args[0], args[1]); put(args[2], args[3]);
+      for (const [x, y] of [[args[0], args[1]], [args[2], args[3]]]) {
+        const [wx, wy] = at(ctm, x, y);
+        put(wx, wy);
+      }
     } else if (name === "bezierCurveTo") {
-      put(args[0], args[1]); put(args[2], args[3]); put(args[4], args[5]);
+      for (const [x, y] of [[args[0], args[1]], [args[2], args[3]], [args[4], args[5]]]) {
+        const [wx, wy] = at(ctm, x, y);
+        put(wx, wy);
+      }
     }
   }
   return { x0, x1, y0, y1, ok: Number.isFinite(x0) };

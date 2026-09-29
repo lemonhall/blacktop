@@ -19,6 +19,21 @@
  * `maxHumans: 2` 是刻意的：两个真人 + 十三个机器人，正好填满 1996 年那版的十五台车。
  */
 
+/**
+ * 彩蛋的权重：每条路**各藏一件**，而且只藏一件。
+ *
+ * 为什么权重写得这么小：路边的东西一旦常见就不再是"彩蛋"了，只是布景。这个数字
+ * 要和同一条路的其它权重比着看——总和在 12 上下，所以它约等于**每六十件道具里
+ * 混进去一件**，跑一圈大概能碰上一次、也可能碰不上。碰不上才值得回头找。
+ *
+ * 八件彩蛋和八条路的搭配是**按地方来的**，不是按好看来的：海崖公路上有一艘搁浅
+ * 的破船、雪原山口有个戴铁桶帽子的雪人、沙漠干道插着牛头骨、红杉林里立着图腾柱，
+ * 人烟那边则是电话亭（城市）、夜市摊（霓虹）、乡村信箱（荒野）、工地警示牌（工业）。
+ * 画法分别在 `web/js/eggwild.mjs` 与 `web/js/eggurban.mjs`——**共享内核只认名字**，
+ * 不认颜色，换成别的宿主也一样能跑。
+ */
+const EGG = 0.18;
+
 export const MODES = {
   city: {
     id: "city", name: "夜色环路", sub: "CITY LOOP",
@@ -30,6 +45,7 @@ export const MODES = {
     scenery: {
       building: 3.4, lamp: 3.0, tree: 2.0, sign: 1.4,
       neonsign: 0.9, kiosk: 0.7, busstop: 0.6, hydrant: 0.5, trafficlight: 0.5,
+      phonebooth: EGG,
     },
     same: { car: 6, van: 2, pickup: 1.2, truck: 1, bus: 0.8, trike: 0.7 },
     oncom: { oncom: 6, truck: 1.2, bus: 1, police: 0.6 },
@@ -45,6 +61,7 @@ export const MODES = {
     scenery: {
       guardrail: 3.2, palm: 2.6, rock: 2.2, sign: 1.2,
       lighthouse: 0.4, boulder: 1.1, bench: 0.6, neonsign: 0.7,
+      boat: EGG,
     },
     same: { car: 5, van: 2, pickup: 1.4, truck: 0.8, trike: 0.5 },
     oncom: { oncom: 5, truck: 1.4, bus: 1.2, tanker: 0.6 },
@@ -60,6 +77,7 @@ export const MODES = {
     scenery: {
       tree: 4, rock: 2.4, fence: 1.6, haybale: 1.4, sign: 1.2,
       barn: 0.8, tumble: 0.7, windmill: 0.4, watertower: 0.3, derrick: 0.4,
+      mailbox: EGG,
     },
     same: { car: 4, van: 2, truck: 1.6, pickup: 1.6, tractor: 1.0, bus: 0.5 },
     oncom: { oncom: 4, truck: 2, tanker: 1, tractor: 0.8, bus: 0.6 },
@@ -75,6 +93,7 @@ export const MODES = {
     scenery: {
       cactus: 3.2, rock: 2, deadtree: 1.4, sign: 1.2,
       billboard: 1, derrick: 0.8, tumble: 0.8, watertower: 0.3,
+      skull: EGG,
     },
     same: { car: 5, pickup: 2, van: 1.6, truck: 1.2, mixer: 0.5 },
     oncom: { oncom: 5, truck: 1.6, tanker: 1.2, bus: 0.7 },
@@ -90,6 +109,7 @@ export const MODES = {
     scenery: {
       redwood: 3.6, pine: 3, boulder: 1.4, stump: 1.1,
       logpile: 0.8, sign: 1, rangerhut: 0.5,
+      totem: EGG,
     },
     same: { car: 4, van: 2.4, pickup: 1.6, truck: 1.2 },
     oncom: { oncom: 4, truck: 1.8, tanker: 0.8, bus: 0.6 },
@@ -104,6 +124,7 @@ export const MODES = {
     propStep: 21, oncomingShare: 0.35, maxTraffic: 7,
     scenery: {
       pine: 3.6, snowpole: 2.6, boulder: 1.4, sign: 1.2, lodge: 0.5,
+      snowman: EGG,
     },
     same: { car: 4, van: 2, truck: 1.4, pickup: 1.2, bus: 0.8 },
     oncom: { oncom: 4, truck: 2, bus: 1, tanker: 0.8 },
@@ -119,6 +140,7 @@ export const MODES = {
     scenery: {
       chainfence: 2.4, building: 2.2, floodlight: 2, container: 1.4,
       barrel: 1.2, sign: 1.2, silo: 1.2, gantry: 1, pipe: 1,
+      warnsign: EGG,
     },
     same: { car: 5, van: 2.4, truck: 2.4, container: 1.2, tanker: 1, mixer: 0.8, pickup: 1 },
     oncom: { oncom: 4, truck: 2.2, container: 1, tanker: 1, bus: 0.6 },
@@ -134,6 +156,7 @@ export const MODES = {
     scenery: {
       neonsign: 3, lamp: 3, building: 2.4, kiosk: 1.6, tree: 1.4,
       billboard: 1.2, busstop: 0.8, hydrant: 0.7, trafficlight: 0.6,
+      stall: EGG,
     },
     same: { car: 5, van: 2, trike: 1.6, bus: 1, pickup: 1 },
     oncom: { oncom: 5, bus: 1.6, truck: 1, police: 0.8, trike: 0.6 },

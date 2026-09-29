@@ -30,6 +30,11 @@ import * as road from "./propsroad.mjs";
 import * as street from "./propsstreet.mjs";
 import * as build from "./propsbuild.mjs";
 import * as yard from "./propsyard.mjs";
+import * as eggWild from "./eggwild.mjs";
+import * as eggWood from "./eggwood.mjs";
+import * as eggCarve from "./eggcarve.mjs";
+import * as eggUrban from "./eggurban.mjs";
+import * as eggYard from "./eggyard.mjs";
 
 /** 每种道具的**实际尺寸（米）**：宽 × 高。贴图与判定都按它走。 */
 export const PROP_SIZE = {
@@ -46,6 +51,10 @@ export const PROP_SIZE = {
   kiosk: [3, 3.2], barn: [7.4, 6.2], windmill: [4.6, 7.6], watertower: [5.2, 9.4],
   derrick: [4.2, 12.6], lighthouse: [4.4, 13], rangerhut: [4.4, 3.6], lodge: [6.4, 4.6],
   silo: [3.4, 9.6], container: [6.4, 2.7], barrel: [1.1, 1.5],
+  // 彩蛋：一条路一个（画法分在五本里：荒野 `eggwild` / 木头 `eggwood` /
+  // 雕件 `eggcarve` / 人烟 `eggurban` / 院子 `eggyard`，共用零件在 `eggart.mjs`）
+  skull: [1.2, 2.6], snowman: [1.7, 2.3], boat: [3.4, 1.8], totem: [1.2, 3.4],
+  mailbox: [1.4, 1.9], phonebooth: [1.4, 2.9], stall: [3.4, 2.7], warnsign: [1.7, 2.5],
   // 楼房（不走贴图缓存，见 `buildings.mjs`）
   building: [13, 21],
 };
@@ -73,6 +82,9 @@ export const PROP_PAD = {
   redwood: [1.4, 1.05],
   watertower: [1.5, 1.05], silo: [1.45, 1.05], barrel: [1.45, 1.1],
   billboard: [1.45, 1.05], busstop: [1.4, 1.05],
+  // 彩蛋里的几件：破船的缆绳拖在沙里、船头又翘出去；电话亭的压顶挑出亭身一截，
+  // 顶上那条 "TEL" 还带着光晕，纵向得多留一档。
+  boat: [1.3, 2.2], phonebooth: [1.3, 1.15],
   // 风滚草：一团乱枝，最长的几根本来就伸到本体外面，切齐了就成了一个圆饼。
   tumble: [1.35, 1.25],
   // 光打得很高 / 架子搭得很高：往上也得多留一截，不然塔顶那一层齐头切。
@@ -101,6 +113,10 @@ const DRAWERS = {
   watertower: build.watertower, derrick: build.derrick, lighthouse: build.lighthouse,
   rangerhut: yard.rangerhut, lodge: yard.lodge, silo: yard.silo,
   container: yard.container, barrel: yard.barrel,
+  // 彩蛋：一条路一件，见各条赛道的 `scenery` 权重（都很小，所以是"偶尔遇上"）
+  skull: eggWild.skull, snowman: eggWild.snowman, boat: eggWood.boat, totem: eggCarve.totem,
+  mailbox: eggYard.mailbox, phonebooth: eggUrban.phonebooth,
+  stall: eggUrban.stall, warnsign: eggYard.warnsign,
 };
 
 /**
