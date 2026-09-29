@@ -1,0 +1,75 @@
+  <!-- ============================ 三、赛道 ============================ -->
+  <section id="arena" class="screen hidden">
+    <canvas id="game" tabindex="0" aria-label="比赛画面"></canvas>
+
+    <div class="hud">
+      <div class="hud-top">
+        <div class="hud-brand"><span class="brand-mark">B</span>BLACKTOP</div>
+        <div class="hud-timer"><b id="hudTimer">00:00</b><span>单程 · 到终点</span></div>
+        <div class="hud-actions">
+          <span class="hud-rank">P<b id="hudRank">—</b><span id="hudField">/15</span></span>
+          <button type="button" id="pauseButton" class="icon-button" title="暂停" aria-label="暂停">‖</button>
+          <button type="button" class="icon-button sound-toggle" title="音效开关" aria-label="音效开关">♪</button>
+          <button type="button" class="icon-button fullscreen-button" title="全屏" aria-label="全屏">⛶</button>
+        </div>
+      </div>
+
+      <div id="rankList" class="rank-list"></div>
+      <div id="feedList" class="feed-list"></div>
+
+      <p id="hudKeys" class="hud-keys">
+        <kbd>W</kbd><kbd>↑</kbd>油门 ·
+        <kbd>S</kbd><kbd>↓</kbd>刹车 ·
+        <kbd>A</kbd><kbd>D</kbd><kbd>←</kbd><kbd>→</kbd>压车 ·
+        <kbd>空格</kbd>氮气 ·
+        <kbd>J</kbd>前打 ·
+        <kbd>K</kbd>回身打 ·
+        <kbd>Q</kbd>换家伙 ·
+        <kbd>Esc</kbd>暂停
+      </p>
+
+      <div class="hud-dash">
+        <div class="dash-block">
+          <canvas id="gaugeL" width="124" height="124"></canvas>
+          <span class="dash-speed"><b id="gaugeLSpeed">0</b>km/h</span>
+          <div class="sta-row"><span>体力</span><i class="sta-track"><b id="hudSta"></b></i><em id="hudStaText">100</em></div>
+        </div>
+        <div class="dash-center">
+          <i class="dash-lamps" aria-hidden="true"><b></b><b></b><b></b><b></b><b></b></i>
+          <span class="dash-name">
+            <strong id="hudName">车手</strong>
+            <em class="gear-badge"><b id="hudGear">1</b>挡</em>
+          </span>
+          <span class="dash-gap">与头名 <b id="hudGap">领跑</b></span>
+          <span class="dash-rival"><em id="hudRivalTag">前车</em> <b id="hudRival">独自领跑</b></span>
+          <div id="hudBelt" class="belt-row"></div>
+          <div class="sta-row nos"><span>氮气</span><i class="sta-track"><b id="hudNos"></b></i></div>
+        </div>
+        <div class="dash-block">
+          <canvas id="gaugeR" width="124" height="124"></canvas>
+          <span class="dash-speed"><b id="gaugeRSpeed">1.2</b>×1000</span>
+          <div class="sta-row"><span>他的体力</span><i class="sta-track"><b id="hudRSta"></b></i><em id="hudRStaText">100</em></div>
+        </div>
+      </div>
+
+      <div class="progress-rail"><i id="hudMe"></i></div>
+      <div id="respawn" class="respawn hidden">
+        <strong>摔车了</strong>
+        <span>扶起来接着骑 · <b id="respawnCount">2.0</b>s</span>
+      </div>
+    </div>
+
+    <div class="touch-controls" aria-hidden="false">
+      <div id="steerPad" class="steer-pad" aria-label="压车滑条"><i></i></div>
+      <div class="touch-buttons">
+        <button type="button" class="touch-button small" data-hold="cycle">换械</button>
+        <div class="punch-pair">
+          <button type="button" class="touch-button small" data-hold="punchBack">回身</button>
+          <button type="button" class="touch-button" data-hold="punchFront">前打</button>
+        </div>
+        <button type="button" class="touch-button" data-hold="nitro">氮气</button>
+        <button type="button" class="touch-button" data-hold="brake">刹车</button>
+        <button type="button" class="touch-button big" data-hold="throttle">油门</button>
+      </div>
+    </div>
+  </section>

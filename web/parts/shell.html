@@ -1,0 +1,37 @@
+<!doctype html>
+<!--
+  这个文件是**拼出来的**：真源码在 `web/parts/` 下，一块屏幕一个文件。
+  要改标记就改 `parts/*.html`（外壳是 `parts/shell.html`），然后跑
+  `node tools/build.mjs` 重新拼。**直接改根目录那份 `web/index.html` 会被覆盖。**
+  忘了重新拼也不怕：`tests/web-index-build.test.mjs` 会盯着两边逐字节比对。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>BLACKTOP · 黑路狂飙</title>
+<meta name="description" content="十五台车挤在同一条路上的在线摩托暴走竞速：八条赛道、人机混战、十三种社会车辆、能一脚踹飞的大运。跑在 Cloudflare Workers 上。">
+<meta name="theme-color" content="#0a0e17">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles/game.css">
+<link rel="stylesheet" href="/styles/net.css">
+<link rel="stylesheet" href="/styles/hud.css">
+</head>
+<body>
+<div id="app">
+
+<!--include rooms.html-->
+
+<!--include lobby.html-->
+
+<!--include arena.html-->
+
+<!--include results.html-->
+
+<!--include modals.html-->
+
+  <p id="screenReaderStatus" class="sr-only" role="status" aria-live="polite"></p>
+</div>
+<script type="module" src="/js/app.mjs"></script>
+</body>
+</html>

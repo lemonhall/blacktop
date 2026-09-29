@@ -1,0 +1,53 @@
+  <!-- ============================ 五、弹窗 ============================ -->
+  <div id="modalBackdrop" class="modal-backdrop hidden">
+    <div id="pauseModal" class="modal hidden">
+      <h2>停在路边</h2>
+      <p>车还在路上，别人还在跑。回来的时候油门会立刻接上。</p>
+      <div class="modal-actions">
+        <button type="button" id="resumeButton" class="primary-button">接着骑</button>
+        <button type="button" id="exitButton" class="text-button">离开这间房</button>
+      </div>
+    </div>
+    <div id="helpModal" class="modal hidden">
+      <h2>怎么玩</h2>
+      <div class="help-grid">
+        <div><kbd>W</kbd><kbd>↑</kbd><span>油门</span></div>
+        <div><kbd>S</kbd><kbd>↓</kbd><span>刹车</span></div>
+        <div><kbd>A</kbd><kbd>D</kbd><span>压车（左右）</span></div>
+        <div><kbd>空格</kbd><span>氮气 · 冷却 9 秒</span></div>
+        <div><kbd>J</kbd><kbd>F</kbd><span>前打 · 打身前的人</span></div>
+        <div><kbd>K</kbd><span>回身打 · 打身后的人</span></div>
+        <div><kbd>Q</kbd><span>换家伙 · 腰里那几件轮着用</span></div>
+        <div><kbd>Esc</kbd><kbd>P</kbd><span>暂停</span></div>
+      </div>
+      <p class="help-note">
+        攻击和当年一样只有"一拳"，区别在<b>方向</b>：<kbd>J</kbd> 朝前打身前的人，
+        <kbd>K</kbd> 回身打追上来的那个人。挥空一样掉体力，别乱按。<br>
+        路上捡到或抢到的家伙会挂在腰里（最多四件），<kbd>Q</kbd> 轮着换——
+        <b>棍棒、铁链、撬棍、双节棍</b>拿着用不完，<b>电棍、流星锤、油桶</b>各只有十次，
+        用光当场丢。趁对手举着家伙出手的那一下打他，就能把他的家伙<b>抢过来</b>。<br>
+        打到体力见底，对手就下车；<b>路上每一台社会车辆都能一脚踹飞</b>（轿车、公交、
+        半挂、油罐、搅拌车……只有朝前那一脚够得着），越大的车赏金越高、飞得越低；
+        路上还有牛、羊、鹿、野猪、狗、鹅——撞上去会摔，踹飞它会叫一声。
+        撞上对向来车，自己也会摔——所以贴着对向车道超车是要付学费的。
+      </p>
+      <div class="modal-actions">
+        <button type="button" id="closeHelp" class="primary-button">知道了</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="nameBackdrop" class="modal-backdrop hidden">
+    <div class="modal name-modal">
+      <h2>先起个名字</h2>
+      <p>名册、播报和排行榜都靠它认人。只存在你自己的浏览器里，随时能改。</p>
+      <label class="name-field">车手名
+        <input id="nameInput" maxlength="16" placeholder="例如：夜路狂徒">
+      </label>
+      <p id="nameError" class="name-error hidden">名字不能是空的——一屋子人都叫"车手"就没法踢人了。</p>
+      <div class="modal-actions">
+        <button type="button" id="nameConfirm" class="primary-button">就用这个</button>
+        <button type="button" id="nameSkip" class="text-button">随便给一个</button>
+      </div>
+    </div>
+  </div>

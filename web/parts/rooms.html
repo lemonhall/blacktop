@@ -1,0 +1,81 @@
+  <!-- ============================ 一、房间浏览器 ============================ -->
+  <section id="rooms" class="screen">
+    <div class="rooms-bg" aria-hidden="true"></div>
+
+    <header class="rooms-head">
+      <a class="brand" href="/">
+        <span class="brand-mark">B</span>
+        <span>BLACKTOP<small>黑路狂飙 · MOTOR BRAWL</small></span>
+      </a>
+      <div class="rooms-id">
+        <label class="nick-field">车手名
+          <input id="nickInput" maxlength="16" autocomplete="nickname" placeholder="还没起名">
+        </label>
+        <span class="conn-pill" id="connPill"><i aria-hidden="true"></i><span id="connText">正在连接…</span></span>
+        <button type="button" class="icon-button sound-toggle" title="音效开关" aria-label="音效开关">♪</button>
+        <button type="button" class="icon-button fullscreen-button" title="全屏" aria-label="全屏">⛶</button>
+        <button type="button" class="icon-button" id="helpHeader" title="怎么玩" aria-label="怎么玩">?</button>
+      </div>
+    </header>
+
+    <div class="rooms-layout">
+      <main class="rooms-main">
+        <div class="rooms-bar">
+          <div>
+            <span class="eyebrow">ROOM BROWSER</span>
+            <h2 id="roomsHeadline">正在读取房间…</h2>
+          </div>
+          <div class="rooms-bar-actions">
+            <button type="button" id="refreshRooms" class="icon-button" title="刷新房间列表" aria-label="刷新">⟳</button>
+            <button type="button" id="quickMatchButton" class="secondary-button">快速匹配</button>
+            <button type="button" id="openCreateButton" class="primary-button">创建房间 ↗</button>
+          </div>
+        </div>
+
+        <div id="createPanel" class="create-panel hidden">
+          <label>房间名<input id="createName" maxlength="24" placeholder="自己开一桌"></label>
+          <label>赛道<select id="createMode"></select></label>
+          <label>难度<select id="createDifficulty">
+            <option value="0">休闲 · 机器人放水</option>
+            <option value="1" selected>标准 · 势均力敌</option>
+            <option value="2">老兵 · 弯道出事</option>
+          </select></label>
+          <label>机器人<select id="createBots">
+            <option value="0">0 · 只要真人</option>
+            <option value="6">6</option>
+            <option value="10">10</option>
+            <option value="13" selected>13 · 满员十五台</option>
+          </select></label>
+          <label>中途加入<select id="createJoinLive">
+            <option value="1" selected>允许 · 开跑后也能进来</option>
+            <option value="0">谢客 · 开跑就关门</option>
+          </select></label>
+          <div class="create-actions">
+            <button type="button" id="createRoomButton" class="primary-button">开这一桌</button>
+            <button type="button" id="cancelCreate" class="text-button">算了</button>
+          </div>
+          <p id="createHint" class="create-hint">机器人是来补位的：真人进来就占掉一个机器人名额。满员永远是十五台车。</p>
+          <p id="bikeHint" class="create-hint"></p>
+        </div>
+
+        <div id="roomList" class="room-list"></div>
+        <p id="roomsNote" class="rooms-note"></p>
+        <button type="button" id="helpLobby" class="text-button rooms-help">怎么玩 · 键位与规则</button>
+      </main>
+
+      <aside class="rooms-side">
+        <div class="showcase-box">
+          <canvas id="showcase"></canvas>
+          <span class="showcase-caption">本机车库 · 到候场页给自己的车挑个配色</span>
+        </div>
+        <div class="side-panel">
+          <div class="side-panel-head">排行榜 <span>LEADERBOARD</span></div>
+          <div id="boardRows" class="side-rows"></div>
+        </div>
+        <div class="side-panel">
+          <div class="side-panel-head">最近的比赛 <span>RECENT</span></div>
+          <div id="matchRows" class="side-rows"></div>
+        </div>
+      </aside>
+    </div>
+  </section>

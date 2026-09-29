@@ -1,0 +1,98 @@
+  <!-- ============================ 二、候场 ============================ -->
+  <section id="lobby" class="screen hidden">
+    <header class="room-banner" id="roomBanner">
+      <span id="roomPhase" class="phase-badge">准备中</span>
+      <strong id="roomTitle">房间</strong>
+      <span id="roomCodeLabel" class="room-code">#----</span>
+      <span id="roomMeta" class="room-meta"></span>
+      <button type="button" id="shareRoomButton" class="text-button">复制邀请链接</button>
+      <button type="button" id="leaveRoomButton" class="text-button">离开房间</button>
+    </header>
+
+    <div class="lobby-body">
+      <div class="lobby-stage">
+        <canvas id="showcaseStage"></canvas>
+        <div class="bike-strip">
+          <div class="bike-head">
+            <strong id="bikeName">街霸 400</strong>
+            <span id="bikeEn">STREET 400</span>
+          </div>
+          <p id="bikeNote" class="bike-note">起步快、好压弯，极速一般</p>
+          <div class="bike-stats">
+            <div><span>极速</span><i class="stat-track"><b id="statTop"></b></i></div>
+            <div><span>起步</span><i class="stat-track"><b id="statAccel"></b></i></div>
+            <div><span>压弯</span><i class="stat-track"><b id="statTurn"></b></i></div>
+            <div><span>抓地</span><i class="stat-track"><b id="statGrip"></b></i></div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="lobby-side">
+        <div class="side-panel">
+          <div class="side-panel-head">赛道 <span>COURSE · 房主决定</span></div>
+          <!--
+            八张赛道卡片由 `roomui.mjs` 从 `sim/data.mjs` 的 `MODES` 现渲染。
+            写死在标记里的话，"加一条路"就变成了两处改动，迟早只改一处。
+          -->
+          <div class="mode-cards" id="modeCards"></div>
+          <div class="side-panel-head">难度 <span>BOT SKILL</span></div>
+          <div class="difficulty-select">
+            <button type="button" data-difficulty="0" aria-pressed="false">休闲</button>
+            <button type="button" data-difficulty="1" aria-pressed="true">标准</button>
+            <button type="button" data-difficulty="2" aria-pressed="false">老兵</button>
+          </div>
+        </div>
+
+        <div class="side-panel">
+          <div class="side-panel-head">车型 <span>BIKE · 三种取舍</span></div>
+          <div id="bikePicker" class="bike-picker">
+            <button type="button" data-bike="0" aria-pressed="true">
+              <strong>街霸 400</strong><small>起步快 · 好压弯 · 极速一般</small>
+            </button>
+            <button type="button" data-bike="1" aria-pressed="false">
+              <strong>暴走 750</strong><small>直线最快 · 弯道最难压</small>
+            </button>
+            <button type="button" data-bike="2" aria-pressed="false">
+              <strong>铁马 1200</strong><small>重 · 稳 · 抗撞 · 起步肉</small>
+            </button>
+          </div>
+          <div class="side-panel-head">配色 <span>PAINT</span></div>
+          <div class="palette-row">
+            <button type="button" data-palette="0" aria-label="配色 1"></button>
+            <button type="button" data-palette="1" aria-label="配色 2"></button>
+            <button type="button" data-palette="2" aria-label="配色 3"></button>
+            <button type="button" data-palette="3" aria-label="配色 4"></button>
+            <button type="button" data-palette="4" aria-label="配色 5"></button>
+            <button type="button" data-palette="5" aria-label="配色 6"></button>
+            <button type="button" data-palette="6" aria-label="配色 7"></button>
+            <button type="button" data-palette="7" aria-label="配色 8"></button>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <div id="rosterPanel" class="roster-panel">
+      <div class="roster-top">
+        <span>参战名册</span>
+        <b id="rosterCount">0 / 2</b>
+      </div>
+      <div id="rosterRows" class="roster-rows"></div>
+      <div class="roster-controls">
+        <div id="botStepper" class="bot-stepper">
+          <button type="button" data-bot="-1" aria-label="少一个机器人">−</button>
+          <b>机器人</b><span id="botCount">0</span>
+          <button type="button" data-bot="1" aria-label="多一个机器人">＋</button>
+        </div>
+        <label class="switch-field" id="joinLiveField">
+          <input type="checkbox" id="joinLiveToggle"> 允许中途加入
+        </label>
+        <button type="button" id="readyButton" class="ready-button">我准备好了</button>
+        <div class="start-block">
+          <span id="startModeLabel" class="start-mode">夜色环路 · CITY LOOP</span>
+          <button type="button" id="startButton" class="start-button"><span>出发</span></button>
+        </div>
+      </div>
+      <p id="rosterNote" class="roster-note"></p>
+      <p id="teamNote" class="team-note"></p>
+    </div>
+  </section>

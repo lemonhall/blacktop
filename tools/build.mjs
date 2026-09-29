@@ -11,6 +11,7 @@
 
 import { cpSync, mkdirSync, readFileSync, readdirSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
+import { assembleSite } from "./assemble-html.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const SIM = path.join(ROOT, "sim");
@@ -63,6 +64,14 @@ if (missing.length) {
   process.exit(1);
 }
 
+/**
+ * 4. 拼 `web/index.html`：真源码是 `web/parts/` 下那一堆"一块屏幕一个文件"。
+ * 产物照样入库——`vercel.json` 只把 `web/` 当静态目录上传，不跑构建，
+ * 所以提交进去的那一份必须永远是最新的。忘了重拼有测试兜底。
+ */
+const html = assembleSite();
+writeFileSync(path.join(WEB, "index.html"), html, "utf8");
+
 console.log(`共享内核   ${copied} 个模块 → web/sim/`);
 console.log(`后端地址   ${api || "(同源)"}`);
-console.log(`站点入口   web/index.html`);
+console.log(`站点入口   web/index.html（由 web/parts/ 的 ${readdirSync(path.join(WEB, "parts")).length - 1} 块拼成）`);
