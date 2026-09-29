@@ -12,6 +12,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { clearLabels, label, labelCacheSize } from "../web/js/labels.mjs";
+import { floaterSize } from "../web/js/render.mjs";
 import { fakeCanvas } from "./helpers/dom.mjs";
 import { countOps, spyCtx } from "./helpers/spy-ctx.mjs";
 
@@ -91,4 +92,16 @@ test("量不出宽度就现画：没有 document / 没有 measureText 时不许�
   assert.equal(countOps(spy.ops, "strokeText"), 1);
   assert.equal(countOps(spy.ops, "fillText"), 1);
   assert.equal(countOps(spy.ops, "drawImage"), 0);
+});
+
+/**
+ * 跳字的字号必须封顶。踩过的坑：踹飞的那台车就贴在我车头前面，跳字按 ppm 一路
+ * 长到三百多像素——一个字铺满半个屏幕，比当时发生的事还大。
+ */
+test("跳字跟着距离长，但到顶就停：贴脸的东西不许把字撑满屏幕", () => {
+  assert.ok(floaterSize(20, false) < floaterSize(60, false), "远处该比近处小");
+  assert.equal(floaterSize(400, false), 28, "普通跳字封顶 28 像素");
+  assert.equal(floaterSize(400, true), 44, "大字号的赏金封顶 44 像素");
+  assert.ok(floaterSize(900, true) === floaterSize(400, true), "再近也不许继续长");
+  assert.ok(floaterSize(20, true) > floaterSize(20, false), "赏金那一档本来就该更大");
 });

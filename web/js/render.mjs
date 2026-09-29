@@ -20,6 +20,17 @@ import { drawPickup } from "./weaponsart.mjs";
 import { CRITTERS } from "../../sim/critters.mjs";
 import { drawOverlays } from "./overlays.mjs";
 
+/**
+ * 跳字的字号：**按距离长，但封顶**。
+ *
+ * 跳字（`+400`、`悬赏 1500`）挂在"那一件东西"上，而那件东西常常就贴在我车头前面
+ * 两三米——刚踹飞的那台车、刚捡起来的那件家伙。那一处的 ppm 能到三四百，字号跟着
+ * 长就是一个字铺满半个屏幕，比当时发生的事还大。所以到 28/44 像素就到顶。
+ */
+export function floaterSize(ppm, big) {
+  return Math.min(big ? 44 : 28, (big ? 1.15 : 0.85) * ppm + 8);
+}
+
 export function renderGame(ctx, view) {
   if (!view || !S.track) return;
   const W = S.view.w, H = S.view.h;
@@ -103,7 +114,10 @@ function drawFx(ctx, cam, tbl) {
     const q = project(cam, tbl, f.x, f.y, f.z);
     if (!q || q.ppm < 0.4) continue;
     ctx.globalAlpha = Math.max(0, f.life / f.max);
-    label(ctx, q.sx, q.sy, f.text, f.color, (f.big ? 1.15 : 0.85) * q.ppm + 8);
+    // 字号按距离长，但**必须封顶**：跳字是挂在"那一件东西"上的，而它常常就贴在
+    // 我车头前面两三米（刚刚踹飞的那台车、刚捡起来的那件家伙），那一处的 ppm 能到
+    // 三四百——一个字于是铺满半个屏幕，比当时发生的事还大。
+    label(ctx, q.sx, q.sy, f.text, f.color, floaterSize(q.ppm, f.big));
   }
   ctx.globalAlpha = 1;
 }
