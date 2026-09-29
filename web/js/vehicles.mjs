@@ -9,18 +9,19 @@
  *
  * 这个文件只管**分发**——哪台车交给哪一位画。真正画画的手艺在三个兄弟文件里：
  *   - `vehiclelight.mjs` 轿车 / 皮卡 / 警车 / 三轮车 / 拖拉机；
- *   - `vehicleheavy.mjs` 厢货 / 重卡 / 公交 / 半挂 / 油罐 / 搅拌车；
+ *   - `vehicleheavy.mjs` 厢货 / 重卡 / 公交 / 半挂；
+ *   - `vehicletank.mjs` 油罐车 / 搅拌车（背上驮着东西的那两辆）；
  *   - `vehicledayun.mjs` 大运（它一个人值得一间房）。
- * 零件（轮胎、车牌、灯、被踹瘪的那一套）在 `vehicleparts.mjs`。
+ * 零件（轮胎、车牌、灯、被踹瘪的那一套）在 `vehicleparts.mjs`，
+ * 玻璃后面的人、车底的泥、挡泥板这些"小东西"在 `vehiclechrome.mjs`。
  *
  * 上一版是"一个文件里塞五台车"，加第六台的时候就得在四百行里翻轮胎画在哪。
  */
 
 import { TAU } from "../../sim/constants.mjs";
 import { VEHICLES } from "../../sim/traffic.mjs";
-import {
-  drawBox, drawBus, drawContainer, drawMixer, drawTanker,
-} from "./vehicleheavy.mjs";
+import { drawBox, drawBus, drawContainer } from "./vehicleheavy.mjs";
+import { drawMixer, drawTanker } from "./vehicletank.mjs";
 import {
   drawCar, drawPickup, drawPolice, drawTractor, drawTrike,
 } from "./vehiclelight.mjs";
@@ -80,6 +81,12 @@ export function drawVehicle(ctx, o) {
     ctx.fill();
   }
   const painter = DRAWERS[o.kind] || drawCar;
+  // **被踹瘪 = 被压扁**：车身整体矮一截、宽一点。
+  //
+  // 这一笔不画任何东西，只是把"挨过一脚"换算成一个缩放——所以崭新的车一个像素
+  // 都不变，而瘪到底的那台明显是"塌"下去的。褶皱和撕口（`damagePass`）说明的是
+  // "金属被挤过"，这一下说明的是**整车被砸扁**，两件事叠起来才像一脚踹瘪的。
+  if (dmg > 0.02) ctx.scale(1 + dmg * 0.08, 1 - dmg * 0.16);
   painter(ctx, w, h, paintOf(o.id), o.dir, dmg);
   ctx.restore();
 }

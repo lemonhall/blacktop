@@ -253,14 +253,38 @@ export function tornBumper(ctx, w, y, dmg = 0) {
 /**
  * 一台车最后一道工序：把伤叠上去。
  *
- * 顺序是"先褶皱、再凹坑、最后撕口"——由浅到深。反过来画的话，最重的那道口子
- * 会被后面的褶皱盖住一半，看上去反倒像伤得轻了。
+ * 顺序是"先折痕、再褶皱、再凹坑、最后撕口"——由浅到深。反过来画的话，最重的那道
+ * 口子会被后面的褶皱盖住一半，看上去反倒像伤得轻了。
  */
 export function damagePass(ctx, w, h, dmg) {
   if (!(dmg > 0.05)) return;
   const k = Math.min(1, dmg);
+  crease(ctx, -w * 0.1, h * 0.3, w * 0.6, h * 0.24, k * 0.8);
   wrinkles(ctx, -w * 0.44, w * 0.44, h * 0.3, h * 0.78, Math.round(2 + k * 4), k);
   dent(ctx, -w * 0.3, h * 0.34, w * 0.34, h * 0.3, k * 0.9);
   dent(ctx, w * 0.3, h * 0.52, w * 0.3, h * 0.26, k * 0.7);
   if (k > 0.45) gash(ctx, 0, h * 0.62, w * 0.42, -0.14, k > 0.75);
+}
+
+/**
+ * 被挤出来的**一道折痕**：一暗一亮两条对顶的斜线。
+ * 金属受挤之后出现的就是这个形状，它比一团噪点更像"被砸进去过"。
+ */
+export function crease(ctx, x, y, w, h, k = 1) {
+  const d = Math.min(1, k);
+  ctx.strokeStyle = `rgba(8,11,18,${(0.5 * d).toFixed(3)})`;
+  ctx.lineWidth = 0.03;
+  ctx.beginPath();
+  ctx.moveTo(x - w / 2, y + h * 0.7);
+  ctx.lineTo(x - w * 0.1, y + h * 0.2);
+  ctx.lineTo(x + w * 0.35, y + h * 0.62);
+  ctx.lineTo(x + w / 2, y + h * 0.3);
+  ctx.stroke();
+  ctx.strokeStyle = `rgba(255,255,255,${(0.16 * d).toFixed(3)})`;
+  ctx.lineWidth = 0.018;
+  ctx.beginPath();
+  ctx.moveTo(x - w / 2, y + h * 0.82);
+  ctx.lineTo(x - w * 0.1, y + h * 0.32);
+  ctx.lineTo(x + w * 0.35, y + h * 0.74);
+  ctx.stroke();
 }
