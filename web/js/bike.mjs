@@ -40,6 +40,18 @@ const TITANIUM = "#5f6875";
 /** 后胎：直径 0.6 米、宽 0.23 米。 */
 const WHEEL = { w: 0.23, h: 0.6 };
 
+/**
+ * 尾罩最宽处（米，到中线的距离）。这是**"腿有没有露出来"的唯一判据**：
+ * 膝盖和小腿必须在它外面，否则从正后方看骑手就是没有腿的。
+ */
+export const TAIL_HALF = 0.226;
+
+/**
+ * 脚踏杆：从车体侧面横支出来的一根短杆，末端一颗黑端盖。骑手的脚**踩在它的
+ * 顶面上**——`riderlegs.mjs` 的靴底高度直接由这里算出来，所以两边不会各写一份。
+ */
+export const PEG = { inX: 0.17, outX: 0.335, r: 0.048, capX: 0.34, capR: 0.032 };
+
 export function drawBike(ctx, { palette, detail = 2, wobble = 0 }) {
   rearWheel(ctx, detail);
   chain(ctx, detail);
@@ -180,11 +192,11 @@ function tail(ctx, p, detail) {
   ]);
   ctx.beginPath();
   ctx.moveTo(-0.2, 0.56);
-  ctx.quadraticCurveTo(-0.226, 0.72, -0.19, 0.84);
+  ctx.quadraticCurveTo(-TAIL_HALF, 0.72, -0.19, 0.84);
   ctx.quadraticCurveTo(-0.176, 0.93, -0.135, 0.95);
   ctx.lineTo(0.135, 0.95);
   ctx.quadraticCurveTo(0.176, 0.93, 0.19, 0.84);
-  ctx.quadraticCurveTo(0.226, 0.72, 0.2, 0.56);
+  ctx.quadraticCurveTo(TAIL_HALF, 0.72, 0.2, 0.56);
   ctx.quadraticCurveTo(0, 0.51, -0.2, 0.56);
   ctx.closePath();
   ctx.fillStyle = g;
@@ -195,7 +207,7 @@ function tail(ctx, p, detail) {
   // 左上缘的轮廓光：尾罩压暗之后，靠它把车尾从夜色里"切"出来
   ctx.beginPath();
   ctx.moveTo(-0.2, 0.57);
-  ctx.quadraticCurveTo(-0.222, 0.72, -0.186, 0.84);
+  ctx.quadraticCurveTo(-(TAIL_HALF - 0.004), 0.72, -0.186, 0.84);
   ctx.strokeStyle = "rgba(190,214,246,.3)";
   ctx.lineWidth = 0.022;
   ctx.stroke();
@@ -251,8 +263,8 @@ function tail(ctx, p, detail) {
 /** 脚踏：车尾下缘的两粒小零件，脚踩在上面才叫"骑车"。 */
 function pegs(ctx, detail) {
   for (const side of [-1, 1]) {
-    tube(ctx, side * 0.17, RIDE.footY, side * 0.335, RIDE.footY, 0.048, "#98a2b3", { bright: 0.4 });
-    circle(ctx, side * 0.34, RIDE.footY, 0.032, "#15181f");
+    tube(ctx, side * PEG.inX, RIDE.footY, side * PEG.outX, RIDE.footY, PEG.r, "#98a2b3", { bright: 0.4 });
+    circle(ctx, side * PEG.capX, RIDE.footY, PEG.capR, "#15181f");
   }
   if (detail < 1) return;
   for (const side of [-1, 1]) {
@@ -260,8 +272,8 @@ function pegs(ctx, detail) {
     ctx.strokeStyle = "rgba(38,44,56,.95)";
     ctx.lineWidth = 0.05;
     ctx.beginPath();
-    ctx.moveTo(side * 0.315, RIDE.footY - 0.01);
-    ctx.lineTo(side * 0.18, 0.34);
+    ctx.moveTo(side * (PEG.outX - 0.02), RIDE.footY - 0.01);
+    ctx.lineTo(side * (PEG.inX + 0.01), 0.34);
     ctx.stroke();
   }
 }

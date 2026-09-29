@@ -13,8 +13,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { PALETTES } from "../sim/data.mjs";
 import { WEAPONS } from "../sim/weapons.mjs";
-import { drawBike } from "../web/js/bike.mjs";
+import { PEG, RIDE, TAIL_HALF, drawBike } from "../web/js/bike.mjs";
 import { drawRider } from "../web/js/sprites.mjs";
+import { LEG } from "../web/js/riderlegs.mjs";
 import { assertBalanced, assertSane, countOps, fingerprint, spyCtx } from "./helpers/spy-ctx.mjs";
 
 const rider = extra => ({ cx: 400, baseY: 700, s: 140, palette: 0, lean: 0, swing: 0, wreck: 0, ...extra });
@@ -105,4 +106,39 @@ test("脏输入不该把渲染循环带崩", () => {
     const { ctx } = spyCtx();
     drawRider(ctx, rider(bad));
   }
+});
+
+/**
+ * 腿的画法契约。这一组只钉三件事，因为腿一旦画砸就是整整一类毛病：
+ * 藏进车里（看不见腿）、浮在车外（像两块挂上去的垫子）、脚不踩杆（悬空）。
+ */
+test("膝盖和靴子必须顶到尾罩外面，否则骑手等于没有腿", () => {
+  assert.ok(LEG.kneeX > TAIL_HALF, `膝盖在 ${LEG.kneeX} 米，尾罩最宽 ${TAIL_HALF} 米——腿被车挡住了`);
+  assert.ok(LEG.bootOuterX > TAIL_HALF, `靴子在 ${LEG.bootOuterX} 米，没越出尾罩`);
+});
+
+test("靴底正好落在脚踏杆的顶面上：脚是踩着的，不是悬空的", () => {
+  const onPeg = RIDE.footY + PEG.r;
+  assert.ok(Math.abs(LEG.bootBottomY - onPeg) < 1e-9,
+    `靴底 ${LEG.bootBottomY}，脚踏杆顶面 ${onPeg}——脚离杆了`);
+  assert.ok(LEG.bootOuterX <= PEG.capX + PEG.capR,
+    "靴子把整根脚踏杆盖住了，看不出脚踩在哪里");
+});
+
+test("画法次序：腿在车身后面、靴子在车身前面", () => {
+  const { ctx, ops } = spyCtx();
+  drawRider(ctx, rider({}));
+  const near = (v, want) => Math.abs(v - want) < 1e-9;
+  // 腿的内侧轮廓：`legs()` 用 `lineTo(±bootOuterX, bootBottomY - 0.006)` 收口
+  const legIdx = ops.findIndex(([n, a]) =>
+    n === "lineTo" && near(Math.abs(a[0]), LEG.bootOuterX) && near(a[1], LEG.bootBottomY - 0.006));
+  // 脚踏杆：`pegs()` 唯一那条 `moveTo(±(PEG.outX - 0.02), RIDE.footY - 0.01)`
+  const pegIdx = ops.findIndex(([n, a]) =>
+    n === "moveTo" && near(Math.abs(a[0]), PEG.outX - 0.02) && near(a[1], RIDE.footY - 0.01));
+  // 靴底：`boots()` 那条 `quadraticCurveTo(±(bootOuterX - 0.044), bootBottomY - 0.02, ±bootOuterX, bootBottomY + 0.004)`
+  const bootIdx = ops.findIndex(([n, a]) =>
+    n === "quadraticCurveTo" && near(Math.abs(a[2]), LEG.bootOuterX) && near(a[3], LEG.bootBottomY + 0.004));
+  assert.ok(legIdx >= 0 && pegIdx >= 0 && bootIdx >= 0, "三条基准笔一条都没找到，测试本身失效了");
+  assert.ok(legIdx < pegIdx, "腿画在车身前面了——大腿内侧会变成一条多余的黑边");
+  assert.ok(pegIdx < bootIdx, "靴子画在脚踏杆前面之前了——脚踏杆会横穿脚背");
 });

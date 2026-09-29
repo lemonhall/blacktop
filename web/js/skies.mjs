@@ -50,15 +50,20 @@ export const PALETTES = {
       { color: "rgba(180,144,90,.9)", tall: 0.12, seed: 47 },
     ],
   },
-  // 红杉林：天几乎看不见，光是从树缝里漏下来的几条
+  // 红杉林：天几乎看不见，光从树缝里漏下来，贴地一层绿雾
   forest: {
-    sky: [[0, "#16240f"], [0.4, "#2c4318"], [0.72, "#6d7a35"], [1, "#c9c070"]],
-    layers: ["shafts", "standing", "standing"],
-    shafts: { count: 7, color: "rgba(255,244,180,", alpha: 0.14 },
+    sky: [[0, "#0d1a0a"], [0.34, "#1e3212"], [0.62, "#40541c"], [0.84, "#8a8c3c"], [1, "#d6cb84"]],
+    layers: ["shafts", "mist", "standing", "standing", "canopy"],
+    shafts: { count: 9, color: "rgba(255,246,190,", alpha: 0.2 },
     standing: [
-      { color: "#0f1c0b", count: 26, seed: 61, w: 0.05 },
-      { color: "#16250d", count: 34, seed: 67, w: 0.04 },
+      { color: "#0c180a", count: 24, seed: 61, w: 0.05, branch: false },
+      { color: "#15240d", count: 30, seed: 67, w: 0.036, branch: true, shade: "rgba(10,20,8,.5)" },
     ],
+    canopy: { count: 17, seed: 71, color: "#0a1408", color2: "#132009" },
+    mist: {
+      depth: 0.34, none: "rgba(180,200,150,0)",
+      mid: "rgba(186,204,152,.3)", bot: "rgba(206,216,168,.44)",
+    },
   },
   // 雪原：阴天的白。山脊是白的、天是灰的，只有一条很淡的亮带说明太阳在哪
   snow: {

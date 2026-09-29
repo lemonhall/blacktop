@@ -1,10 +1,12 @@
 /**
- * 路边**人造的东西**：路灯、路牌、信号灯、护栏、雪杆、消防栓、候车亭、
- * 长椅、探照灯、广告牌、霓虹招牌、龙门架、涵管。
+ * 路边**沿路排开的人造东西**：路灯、路牌、信号灯、护栏、铁网、木栅栏、雪杆。
  *
  * 这一组负责的是"这里有人住"——纯自然的路边跑起来像在火星上骑摩托。
  * 每一条路上出现的种类都不一样：荒野是木栅栏与草垛，工业支线是铁网与龙门架，
  * 夜市是糊脸的招牌。**同一种道具在不同的路上颜色也不同**，那由 `theme` 定。
+ *
+ * 它们和 `propsstreet.mjs` 里那拨"城市家具"的分界线是**密度**：这一拨是线性的，
+ * 沿路一根接一根地重复，负责给速度感和路的边界；那一拨是点状的，一段路才冒一个。
  *
  * 坐标系：米，y 向上，原点在接地点。
  */
@@ -14,35 +16,88 @@ import { hash2 } from "../../sim/rng.mjs";
 import { hgrad, poly, shade, vgrad } from "./art.mjs";
 import { bulb, concreteFace, glassPane, label3d, plankFace, pole, rustPatch } from "./parts.mjs";
 
-/** 路灯：底座 + 杆 + 悬臂 + 灯头。夜里在路面打一块光斑。 */
+/**
+ * 路灯：水泥墩 + **锥形杆**（四段，越往上越细）+ 检修门 + 悬臂 + 灯头，夜里在地上
+ * 打一块光。
+ *
+ * 上一版的灯锥是一块**硬边梯形**：一片米黄色的板子从灯头斜插到地面，近处看就是
+ * 半透明的墙（截图里最扎眼的一处）。现在改成**径向渐变**填同一个多边形——亮度
+ * 从灯头往外衰减，多边形那几条斜边正好落在 alpha≈0 的地方，边缘就化掉了。
+ * 灯头从"一颗圆球"改成"一个弯下来的灯罩"，因为它本来就是个灯罩。
+ */
 export function lamp(ctx, w, h, t, seed) {
-  concreteFace(ctx, -w * 0.2, 0, w * 0.4, h * 0.075, t.conc, seed);
-  pole(ctx, 0, w * 0.13, h * 0.95, t.steel);
-  const armY = h * 0.93;
-  ctx.strokeStyle = shade(t.steel, -0.1);
-  ctx.lineWidth = w * 0.1;
+  // 水泥墩 + 压顶 + 地脚螺栓：路灯底下那一圈，近处看得出来是浇筑的
+  concreteFace(ctx, -w * 0.24, 0, w * 0.48, h * 0.062, t.conc, seed);
+  ctx.fillStyle = shade(t.conc, 0.22);
+  ctx.fillRect(-w * 0.27, h * 0.055, w * 0.54, 0.035);
+  ctx.fillStyle = "rgba(6,9,16,.4)";
+  for (const bx of [-w * 0.17, w * 0.17]) {
+    ctx.beginPath();
+    ctx.arc(bx, h * 0.075, 0.035, 0, TAU);
+    ctx.fill();
+  }
+  // 检修门：杆子底下那块方盖子。这一笔不为什么，就是"这根杆子有人管"
+  ctx.fillStyle = shade(t.steel, -0.36);
+  ctx.fillRect(w * 0.035, h * 0.06, w * 0.05, h * 0.15);
+  ctx.fillStyle = "rgba(255,255,255,.12)";
+  ctx.fillRect(w * 0.035, h * 0.205, w * 0.05, 0.018);
+  // 杆：一根路灯杆是锥形的。四段拼出来，接缝正好当"法兰"
+  const segs = 4, y0 = h * 0.062, span = h * 0.85;
+  for (let i = 0; i < segs; i++) {
+    const wa = w * (0.135 - i * 0.017), wb = w * (0.135 - (i + 1) * 0.017);
+    const ya = y0 + (span / segs) * i, yb = ya + span / segs;
+    ctx.fillStyle = hgrad(ctx, -wa / 2, wa / 2, (ya + yb) / 2, [
+      [0, shade(t.steel, 0.36)], [0.34, t.steel], [1, shade(t.steel, -0.52)],
+    ]);
+    poly(ctx, [[-wa / 2, ya], [wa / 2, ya], [wb / 2, yb], [-wb / 2, yb]], ctx.fillStyle);
+    if (i < segs - 1) {
+      ctx.fillStyle = "rgba(6,9,16,.34)";
+      ctx.fillRect(-wa * 0.62, yb - 0.022, wa * 1.24, 0.022);
+    }
+  }
+  // 悬臂：从杆顶弯出去，末端挂灯罩
+  const armY = h * 0.9;
+  const headX = w * 0.62, headY = armY + h * 0.012;
+  ctx.strokeStyle = shade(t.steel, -0.06);
+  ctx.lineWidth = w * 0.075;
   ctx.beginPath();
-  ctx.moveTo(0, armY);
-  ctx.quadraticCurveTo(w * 0.34, armY + h * 0.035, w * 0.62, armY - h * 0.01);
+  ctx.moveTo(0, armY + h * 0.02);
+  ctx.quadraticCurveTo(w * 0.36, armY + h * 0.055, headX, headY);
   ctx.stroke();
-  ctx.fillStyle = shade(t.steel, -0.28);
-  poly(ctx, [
-    [w * 0.36, armY], [w * 0.72, armY], [w * 0.64, armY - h * 0.03], [w * 0.44, armY - h * 0.03],
-  ], shade(t.steel, -0.28));
-  const lit = t.night;
-  bulb(ctx, w * 0.54, armY - h * 0.045, w * 0.055, lit ? "#fff0bb" : "#d7dbe4", lit, 1.4);
-  if (!lit) return;
-  // 灯锥 + 地面上那块亮斑：路灯真正的作用是"在地上打一块光"，不是自己发亮
-  ctx.fillStyle = vgrad(ctx, 0, 0, h * 0.9, [
-    [0, "rgba(255,226,150,.3)"], [1, "rgba(255,226,150,0)"],
-  ]);
-  poly(ctx, [
-    [w * 0.4, armY - h * 0.06], [w * 0.7, armY - h * 0.06],
-    [w * 1.9, 0], [w * 0.1, 0],
-  ], ctx.fillStyle);
-  ctx.fillStyle = "rgba(255,222,150,.32)";
+  ctx.strokeStyle = "rgba(255,255,255,.16)";
+  ctx.lineWidth = w * 0.022;
   ctx.beginPath();
-  ctx.ellipse(w * 1.0, 0.05, w * 1.3, h * 0.05, 0, 0, TAU);
+  ctx.moveTo(0, armY + h * 0.036);
+  ctx.quadraticCurveTo(w * 0.36, armY + h * 0.071, headX, headY + h * 0.008);
+  ctx.stroke();
+  // 灯罩：一个上宽下窄的梯形 + 底面的玻璃
+  const lit = t.night;
+  ctx.fillStyle = shade(t.steel, -0.3);
+  poly(ctx, [
+    [headX - w * 0.17, headY + h * 0.02], [headX + w * 0.17, headY + h * 0.02],
+    [headX + w * 0.12, headY - h * 0.012], [headX - w * 0.12, headY - h * 0.012],
+  ], shade(t.steel, -0.3));
+  ctx.fillStyle = lit ? "#fff6d2" : "#c9ced8";
+  ctx.fillRect(headX - w * 0.13, headY - h * 0.016, w * 0.26, h * 0.006);
+  bulb(ctx, headX, headY + h * 0.004, w * 0.05, lit ? t.light : "#d7dbe4", lit, 1.1);
+  if (!lit) return;
+  // 光锥：多边形给形状，径向渐变给衰减。远近两端都落在 alpha≈0 上
+  const cone = ctx.createRadialGradient(headX, headY, w * 0.1, headX, headY, h * 0.98);
+  cone.addColorStop(0, "rgba(255,232,168,.34)");
+  cone.addColorStop(0.45, "rgba(255,226,150,.14)");
+  cone.addColorStop(1, "rgba(255,220,140,0)");
+  ctx.fillStyle = cone;
+  poly(ctx, [
+    [headX - w * 0.14, headY - h * 0.01], [headX + w * 0.14, headY - h * 0.01],
+    [headX + w * 1.15, 0], [headX - w * 1.15, 0],
+  ], ctx.fillStyle);
+  // 地面上那块亮斑：也是渐变的，边不能硬
+  const pool = ctx.createRadialGradient(headX, 0.06, 0.05, headX, 0.06, w * 1.25);
+  pool.addColorStop(0, "rgba(255,228,158,.3)");
+  pool.addColorStop(1, "rgba(255,224,150,0)");
+  ctx.fillStyle = pool;
+  ctx.beginPath();
+  ctx.ellipse(headX, 0.06, w * 1.25, h * 0.045, 0, 0, TAU);
   ctx.fill();
 }
 
@@ -160,176 +215,4 @@ export function snowpole(ctx, w, h, t, seed) {
   }
   ctx.fillStyle = "#d8454a";
   ctx.fillRect(-w * 0.16, h * 0.95, w * 0.32, h * 0.05);
-}
-
-/** 消防栓：红色、两个侧口、顶上六角螺帽。 */
-export function hydrant(ctx, w, h, t, seed) {
-  ctx.fillStyle = "rgba(6,9,16,.4)";
-  ctx.beginPath();
-  ctx.ellipse(0, 0.03, w * 0.5, 0.08, 0, 0, TAU);
-  ctx.fill();
-  ctx.fillStyle = hgrad(ctx, -w * 0.3, w * 0.3, h * 0.4, [
-    [0, "#e8544a"], [0.36, "#c8392f"], [1, "#7d1f1a"],
-  ]);
-  ctx.fillRect(-w * 0.28, h * 0.08, w * 0.56, h * 0.66);
-  ctx.fillRect(-w * 0.38, 0, w * 0.76, h * 0.12);
-  ctx.beginPath();
-  ctx.arc(0, h * 0.76, w * 0.28, 0, Math.PI);
-  ctx.fill();
-  for (const side of [-1, 1]) {
-    ctx.fillStyle = "#9c2b23";
-    ctx.beginPath();
-    ctx.arc(side * w * 0.3, h * 0.44, w * 0.13, 0, TAU);
-    ctx.fill();
-  }
-  ctx.fillStyle = "#ffd45c";
-  ctx.fillRect(-w * 0.12, h * 0.86, w * 0.24, h * 0.08);
-  ctx.fillStyle = "rgba(255,255,255,.3)";
-  ctx.fillRect(-w * 0.2, h * 0.12, w * 0.07, h * 0.56);
-}
-
-/** 候车亭：顶棚 + 一块玻璃背板 + 长凳 + 站牌。 */
-export function busstop(ctx, w, h, t, seed) {
-  ctx.fillStyle = "rgba(6,9,16,.36)";
-  ctx.fillRect(-w * 0.5, 0, w, 0.08);
-  ctx.fillStyle = hgrad(ctx, -w / 2, w / 2, h * 0.5, [
-    [0, shade(t.conc, 0.24)], [0.46, t.conc], [1, shade(t.conc, -0.34)],
-  ]);
-  ctx.fillRect(-w * 0.46, h * 0.9, w * 0.92, h * 0.1);
-  ctx.fillStyle = "rgba(255,255,255,.2)";
-  ctx.fillRect(-w * 0.46, h * 0.94, w * 0.92, h * 0.03);
-  glassPane(ctx, -w * 0.42, h * 0.16, w * 0.84, h * 0.7, { lit: t.night, alpha: 0.7 });
-  ctx.fillStyle = "rgba(6,9,16,.6)";
-  ctx.fillRect(-w * 0.42, h * 0.16, w * 0.84, h * 0.04);
-  plankFace(ctx, -w * 0.32, h * 0.2, w * 0.64, h * 0.07, t.wood, seed);
-  pole(ctx, w * 0.5, w * 0.05, h * 0.86, t.steel);
-  ctx.fillStyle = t.night ? "#2469c8" : "#1f6a52";
-  ctx.fillRect(w * 0.36, h * 0.86, w * 0.28, h * 0.13);
-  label3d(ctx, w * 0.5, h * 0.925, h * 0.075, "站", "#f2f6ff");
-}
-
-/** 长椅：木条座面 + 靠背 + 铸铁腿。 */
-export function bench(ctx, w, h, t, seed) {
-  for (const side of [-1, 1]) {
-    ctx.fillStyle = "#2a2e36";
-    ctx.fillRect(side * w * 0.34 - w * 0.04, 0, w * 0.08, h * 0.5);
-    ctx.fillRect(side * w * 0.34 - w * 0.04, 0, w * 0.08, h * 0.9);
-  }
-  for (let i = 0; i < 3; i++) {
-    plankFace(ctx, -w / 2, h * (0.46 + i * 0.05), w, h * 0.045, t.wood, seed + i);
-  }
-  for (let i = 0; i < 3; i++) {
-    plankFace(ctx, -w / 2, h * (0.6 + i * 0.1), w, h * 0.06, shade(t.wood, i * 0.04), seed + i * 3);
-  }
-}
-
-/** 探照灯：高杆 + 一排两盏大灯，灯是亮的（工地夜里不关）。 */
-export function floodlight(ctx, w, h, t, seed) {
-  concreteFace(ctx, -w * 0.22, 0, w * 0.44, h * 0.06, t.conc, seed);
-  pole(ctx, 0, w * 0.16, h * 0.98, t.steel);
-  ctx.fillStyle = shade(t.steel, -0.24);
-  ctx.fillRect(-w * 0.4, h * 0.92, w * 0.8, h * 0.06);
-  for (const side of [-1, 1]) {
-    const x = side * w * 0.5;
-    ctx.fillStyle = "#2b303a";
-    poly(ctx, [[x - w * 0.24, h * 0.94], [x + w * 0.24, h * 0.94], [x + w * 0.3, h * 1.02], [x - w * 0.3, h * 1.02]],
-      "#2b303a");
-    bulb(ctx, x, h * 0.94, w * 0.14, "#fff4cf", true, 1.6);
-  }
-  ctx.fillStyle = vgrad(ctx, 0, 0, h, [
-    [0, "rgba(255,244,200,.2)"], [1, "rgba(255,244,200,0)"],
-  ]);
-  poly(ctx, [
-    [-w * 0.9, h * 1.0], [w * 0.9, h * 1.0], [w * 2.2, 0], [-w * 2.2, 0],
-  ], ctx.fillStyle);
-}
-
-/** 广告牌：两根柱 + 一块大板 + 一张海报。荒野/沙漠/夜市上都有。 */
-export function billboard(ctx, w, h, t, seed) {
-  pole(ctx, -w * 0.3, w * 0.07, h * 0.6, shade(t.steel, -0.2));
-  pole(ctx, w * 0.3, w * 0.07, h * 0.6, shade(t.steel, -0.2));
-  const top = h, bot = h * 0.56;
-  ctx.fillStyle = "rgba(6,9,16,.6)";
-  ctx.fillRect(-w / 2 - 0.04, bot - 0.04, w + 0.08, top - bot + 0.08);
-  const base = ["#c8563f", "#2f6ea8", "#d8a03c", "#4a8a6a"][Math.floor(hash2(seed, 2) * 4)];
-  ctx.fillStyle = hgrad(ctx, -w / 2, w / 2, (top + bot) / 2, [
-    [0, shade(base, 0.24)], [0.5, base], [1, shade(base, -0.34)],
-  ]);
-  ctx.fillRect(-w / 2, bot, w, top - bot);
-  ctx.fillStyle = "rgba(255,255,255,.9)";
-  ctx.fillRect(-w * 0.4, bot + (top - bot) * 0.62, w * 0.5, (top - bot) * 0.1);
-  ctx.fillRect(-w * 0.4, bot + (top - bot) * 0.3, w * 0.72, (top - bot) * 0.14);
-  label3d(ctx, 0, bot + (top - bot) * 0.79, (top - bot) * 0.24, "路上小心", "#fff6e4");
-  rustPatch(ctx, -w / 2, bot, w, top - bot, seed, 0.5);
-}
-
-/** 霓虹招牌：一块竖牌 + 一圈灯管 + 发光字。夜市糊脸的那一笔。 */
-export function neonsign(ctx, w, h, t, seed) {
-  pole(ctx, 0, w * 0.08, h * 0.34, shade(t.steel, -0.2));
-  const top = h, bot = h * 0.3;
-  ctx.fillStyle = "rgba(6,9,16,.85)";
-  ctx.fillRect(-w / 2 - 0.04, bot - 0.04, w + 0.08, top - bot + 0.08);
-  ctx.fillStyle = vgrad(ctx, 0, bot, top, [
-    [0, "#2a1038"], [0.5, "#48184f"], [1, "#210d2c"],
-  ]);
-  ctx.fillRect(-w / 2, bot, w, top - bot);
-  const hue = Math.floor(hash2(seed, 5) * 3);
-  const glow = ["#ff5fd0", "#5fe0ff", "#ffd23f"][hue];
-  ctx.strokeStyle = glow;
-  ctx.lineWidth = 0.06;
-  ctx.globalAlpha = 0.62;
-  ctx.strokeRect(-w / 2 + 0.1, bot + 0.1, w - 0.2, top - bot - 0.2);
-  ctx.globalAlpha = 1;
-  label3d(ctx, 0, bot + (top - bot) * 0.68, (top - bot) * 0.4, ["夜市", "烧烤", "加油"][hue], glow);
-  label3d(ctx, 0, bot + (top - bot) * 0.3, (top - bot) * 0.24, "OPEN", "#f6e9ff");
-  for (let i = 0; i < 6; i++) {
-    bulb(ctx, -w / 2 + w * (0.12 + i * 0.15), bot + 0.06, 0.05, glow, true, 0.7);
-  }
-}
-
-/** 龙门架：横跨半边的桁架 + 一块限高牌。工业支线的地标。 */
-export function gantry(ctx, w, h, t, seed) {
-  pole(ctx, -w * 0.42, w * 0.09, h, t.steel);
-  pole(ctx, w * 0.42, w * 0.09, h, t.steel);
-  const y = h * 0.86, th = h * 0.14;
-  ctx.fillStyle = shade(t.steel, -0.2);
-  ctx.fillRect(-w * 0.5, y, w, th);
-  ctx.strokeStyle = shade(t.steel, 0.16);
-  ctx.lineWidth = 0.04;
-  for (let i = 0; i < 12; i++) {
-    const x = -w * 0.5 + (w / 12) * i;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + w / 24, y + th);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x + w / 24, y);
-    ctx.lineTo(x, y + th);
-    ctx.stroke();
-  }
-  ctx.fillStyle = "#f2c018";
-  ctx.fillRect(-w * 0.2, y + th + 0.05, w * 0.4, h * 0.14);
-  label3d(ctx, 0, y + th + 0.12, h * 0.09, "限高 4.5", "#1a1c22");
-}
-
-/** 涵管：两根躺着的混凝土管，端面能看见内壁。 */
-export function pipe(ctx, w, h, t, seed) {
-  for (let i = 0; i < 2; i++) {
-    const x = i ? w * 0.24 : -w * 0.28;
-    const y = i ? h * 0.52 : 0;
-    ctx.fillStyle = hgrad(ctx, x - w / 2, x + w / 2, y + h / 2, [
-      [0, shade(t.conc, 0.26)], [0.4, t.conc], [1, shade(t.conc, -0.4)],
-    ]);
-    ctx.fillRect(x - w * 0.5, y, w, h * 0.44);
-    ctx.fillStyle = shade(t.conc, -0.5);
-    ctx.beginPath();
-    ctx.ellipse(x + w * 0.5, y + h * 0.22, h * 0.1, h * 0.22, 0, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = "#0d0f14";
-    ctx.beginPath();
-    ctx.ellipse(x + w * 0.5, y + h * 0.22, h * 0.06, h * 0.13, 0, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = "rgba(255,255,255,.18)";
-    ctx.fillRect(x - w * 0.5, y + h * 0.36, w, h * 0.05);
-  }
 }

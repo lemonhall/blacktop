@@ -8,10 +8,13 @@
  * 一条空荡荡的路，哪怕仪表盘写着 200 也像在散步；密到一根根掠过去，60 的时速
  * 就已经吓人了。所以密度和种类都是刻意堆的——八条路一共三十九种道具。
  *
- * 画法本身住在四个兄弟文件里，按"长出来的 / 人造的 / 盖起来的 / 楼房"分开：
- *   - `propsnature.mjs` 树、仙人掌、石头、草垛、风滚草；
- *   - `propsroad.mjs`   路灯、路牌、护栏、雪杆、候车亭、招牌、龙门架；
- *   - `propsbuild.mjs`  谷仓、风车、水塔、井架、灯塔、木屋、筒仓、集装箱；
+ * 画法本身住在五个兄弟文件里，按"长出来的 / 地上的 / 人造的 / 盖起来的 / 楼房"分开：
+ *   - `propsnature.mjs` 树、红杉、棕榈、仙人掌、枯树、树桩；
+ *   - `propsrock.mjs`   原木堆、巨石、石头、草垛、风滚草；
+ *   - `propsroad.mjs`   路灯、路牌、信号灯、护栏、雪杆（沿路一根接一根的那种）；
+ *   - `propsstreet.mjs` 消防栓、候车亭、长椅、探照灯、招牌、龙门架（一段冒一个）；
+ *   - `propsbuild.mjs`  地标：报刊亭、谷仓、风车、水塔、井架、灯塔；
+ *   - `propsyard.mjs`   近处：护林站、山地木屋、筒仓、集装箱、油桶；
  *   - `buildings.mjs`   楼房（它的尺寸跨度和分层都比别的道具大一号）；
  *   - `parts.mjs`       材质：木头、钢、水泥、雪、玻璃、锈。
  *
@@ -22,8 +25,11 @@
 import { hash2 } from "../../sim/rng.mjs";
 import { themeOf } from "./parts.mjs";
 import * as nature from "./propsnature.mjs";
+import * as rock from "./propsrock.mjs";
 import * as road from "./propsroad.mjs";
+import * as street from "./propsstreet.mjs";
 import * as build from "./propsbuild.mjs";
+import * as yard from "./propsyard.mjs";
 
 /** 每种道具的**实际尺寸（米）**：宽 × 高。贴图与判定都按它走。 */
 export const PROP_SIZE = {
@@ -48,17 +54,17 @@ export const PROP_SIZE = {
 const DRAWERS = {
   tree: nature.tree, pine: nature.pine, redwood: nature.redwood, palm: nature.palm,
   cactus: nature.cactus, deadtree: nature.deadtree, stump: nature.stump,
-  logpile: nature.logpile, boulder: nature.boulder, rock: nature.rock,
-  haybale: nature.haybale, tumble: nature.tumble,
+  logpile: rock.logpile, boulder: rock.boulder, rock: rock.rock,
+  haybale: rock.haybale, tumble: rock.tumble,
   lamp: road.lamp, sign: road.sign, trafficlight: road.trafficlight,
   guardrail: road.guardrail, chainfence: road.chainfence, fence: road.fence,
-  snowpole: road.snowpole, hydrant: road.hydrant, busstop: road.busstop,
-  bench: road.bench, floodlight: road.floodlight, billboard: road.billboard,
-  neonsign: road.neonsign, gantry: road.gantry, pipe: road.pipe,
+  snowpole: road.snowpole, hydrant: street.hydrant, busstop: street.busstop,
+  bench: street.bench, floodlight: street.floodlight, billboard: street.billboard,
+  neonsign: street.neonsign, gantry: street.gantry, pipe: street.pipe,
   kiosk: build.kiosk, barn: build.barn, windmill: build.windmill,
   watertower: build.watertower, derrick: build.derrick, lighthouse: build.lighthouse,
-  rangerhut: build.rangerhut, lodge: build.lodge, silo: build.silo,
-  container: build.container, barrel: build.barrel,
+  rangerhut: yard.rangerhut, lodge: yard.lodge, silo: yard.silo,
+  container: yard.container, barrel: yard.barrel,
 };
 
 /**

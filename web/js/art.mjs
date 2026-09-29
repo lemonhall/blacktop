@@ -17,6 +17,12 @@
 
 export const clamp01 = v => (v < 0 ? 0 : v > 1 ? 1 : v);
 
+/**
+ * 描边色。伪 3D 里没有景深模糊，"从路面上跳出来"只能靠对比度，所以每一个
+ * 独立的形状都要压一圈它。三处绘制层（人、腿、车流）共用同一个值，轮廓才统一。
+ */
+export const INK = "rgba(4,6,12,.9)";
+
 const hex2rgb = hex => {
   const n = parseInt(hex.slice(1), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];

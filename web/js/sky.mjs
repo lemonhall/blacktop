@@ -149,13 +149,23 @@ const PAINT = {
     for (let x = 0; x < w; x += 9) ctx.fillRect(x, y + 1, 3.5, 1);
   },
   shafts: (p, ctx, w, h) => {
-    // 林间光柱：几条斜着的半透明梯形，光从右上下来
+    // 林间光柱：几条斜着的半透明梯形，光从右上下来。**每一条自己就是一层渐变**，
+    // 柱脚亮、柱头淡——上一版是纯色梯形，画出来像贴在林子上的一张纸。
     for (let i = 0; i < p.shafts.count; i++) {
       const x = hash2(53, i) * w;
-      ctx.fillStyle = `${p.shafts.color}${(p.shafts.alpha + hash2(59, i) * 0.1).toFixed(2)})`;
+      const a = p.shafts.alpha + hash2(59, i) * 0.12;
+      ctx.fillStyle = `${p.shafts.color}${(a * 0.35).toFixed(2)})`;
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x + w * 0.05, 0);
+      ctx.lineTo(x + w * 0.14, h);
+      ctx.lineTo(x + w * 0.06, h);
+      ctx.closePath(); ctx.fill();
+      // 柱脚那一截更亮：光柱是"打到地上"才看得见的
+      ctx.fillStyle = `${p.shafts.color}${a.toFixed(2)})`;
+      ctx.beginPath();
+      ctx.moveTo(x + w * 0.075, h * 0.35);
+      ctx.lineTo(x + w * 0.108, h * 0.35);
       ctx.lineTo(x + w * 0.14, h);
       ctx.lineTo(x + w * 0.06, h);
       ctx.closePath(); ctx.fill();
@@ -168,8 +178,50 @@ const PAINT = {
       const bw = w / layer.count;
       for (let i = 0; i < layer.count; i++) {
         const x = i * bw + hash2(layer.seed, i) * bw * 0.4;
-        ctx.fillRect(x, 0, w * layer.w * (0.5 + hash2(layer.seed + 3, i)), h);
+        const tw = w * layer.w * (0.5 + hash2(layer.seed + 3, i));
+        // 树干上粗下细，底下还压一圈暗色——不然就是一排等宽的竖条
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x + tw, 0);
+        ctx.lineTo(x + tw * 1.35, h);
+        ctx.lineTo(x - tw * 0.35, h);
+        ctx.closePath();
+        ctx.fill();
+        if (layer.branch) {
+          ctx.fillRect(x - tw * 0.4, h * (0.1 + hash2(layer.seed + 7, i) * 0.5), tw * 1.8, Math.max(1.2, h * 0.006));
+        }
       }
+      if (layer.shade) {
+        ctx.fillStyle = layer.shade;
+        ctx.fillRect(0, h * 0.88, w, h * 0.12);
+      }
+    }
+  },
+  canopy: (p, ctx, w, h) => {
+    // 头顶的树叶：一排压得很低的暗色圆叶。**天只剩下缝**——红杉林道就是这个感觉
+    for (let i = 0; i < p.canopy.count; i++) {
+      const x = hash2(p.canopy.seed, i) * w * 1.12 - w * 0.06;
+      const r = h * (0.09 + hash2(p.canopy.seed + 1, i) * 0.17);
+      ctx.fillStyle = i % 3 === 0 ? p.canopy.color2 : p.canopy.color;
+      ctx.beginPath();
+      ctx.ellipse(x, h * 0.05 - r * 0.4, r * 1.6, r, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  },
+  mist: (p, ctx, w, h) => {
+    // 贴地的雾带：**靠地平线最浓、往上化掉**。没有它，林子就是一堵绿墙
+    const m = p.mist;
+    const g = ctx.createLinearGradient(0, h * (1 - m.depth), 0, h);
+    g.addColorStop(0, m.none);
+    g.addColorStop(0.55, m.mid);
+    g.addColorStop(1, m.bot);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, h * (1 - m.depth), w, h * m.depth);
+    // 再叠两层更窄、更淡的：雾不是一条平直的带子
+    for (let i = 0; i < 3; i++) {
+      const y = h * (0.82 + i * 0.05);
+      ctx.fillStyle = m.mid;
+      ctx.fillRect(0, y, w, Math.max(1, h * 0.012));
     }
   },
   cranes: (p, ctx, w, h) => {

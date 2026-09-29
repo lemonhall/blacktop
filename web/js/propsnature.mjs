@@ -1,9 +1,12 @@
 /**
- * 路边**长出来的东西**：树、仙人掌、石头、草垛、风滚草。
+ * 路边**长出来的东西**：阔叶树、松、红杉、棕榈、仙人掌、枯树、树桩。
  *
  * 这一组是速度和季节的主要来源——红杉林道的"两米一棵"和沙漠干道的"一眼望不到头"
  * 靠的都是它们的密度与形状。所以每一棵都按能拆的层数拆开画：
  * **树干/主干 → 枝 → 冠**，雪原再叠一层雪，沙漠再叠一层枯。
+ *
+ * 散在**地面上**的那些（原木堆、石头、草垛、风滚草）搬去了 `propsrock.mjs`：
+ * 植物靠体积感，地上的东西靠轮廓的碎，是两套画法。
  *
  * 坐标系：米，y 向上，原点在接地点，横向以 0 为轴。
  */
@@ -96,27 +99,58 @@ export function pine(ctx, w, h, t, seed) {
   }
 }
 
-/** 红杉：极窄极高，树皮是竖沟，顶上看不见（一路淡进雾里）。 */
+/**
+ * 红杉：二十四米高的一根柱子，树冠从**下三分之一就起头**，一路收到顶。
+ *
+ * 上一版把树干定成 `0.34 × 宽`，而红杉的道具宽度是 3.6 米——于是路边立着一根
+ * 一米二的褐色方柱，树冠只长在顶上三成，跑起来看就是"一根电线杆顶了棵小树"。
+ * 真树的树干只有半米出头，而且下三分之一就分出枝叶，越往上越短。底部再补一圈
+ * 根盘：那么高的树，没有根盘撑不住。
+ */
 export function redwood(ctx, w, h, t, seed) {
-  const bw = w * 0.34;
-  ctx.fillStyle = hgrad(ctx, -bw / 2, bw / 2, h * 0.5, [
-    [0, "#7a4a2e"], [0.3, "#5c3520"], [0.72, "#3c2314"], [1, "#241309"],
-  ]);
-  ctx.fillRect(-bw / 2, 0, bw, h);
-  ctx.fillStyle = "rgba(0,0,0,.34)";
-  for (let i = 0; i < 7; i++) {
-    ctx.fillRect(-bw / 2 + bw * (0.08 + i * 0.12), h * (0.04 + hash2(seed, i) * 0.08),
-      bw * 0.05, h * (0.6 + hash2(seed, i + 7) * 0.34));
+  const bw = w * 0.16;
+  const bark = ["#7a4a2e", "#5c3520", "#3c2314", "#241309"];
+  // 根盘：往外散开的裙边，底下压着一圈影
+  ctx.fillStyle = shade(bark[1], -0.24);
+  poly(ctx, [[-bw * 2.1, 0], [bw * 2.1, 0], [bw * 0.6, h * 0.028], [-bw * 0.6, h * 0.028]],
+    shade(bark[1], -0.24));
+  ctx.fillStyle = "rgba(6,9,16,.32)";
+  ctx.beginPath();
+  ctx.ellipse(0, 0.05, bw * 2.4, h * 0.008, 0, 0, TAU);
+  ctx.fill();
+  // 树干：六段，一段比一段细
+  const segs = 6;
+  for (let i = 0; i < segs; i++) {
+    const f0 = i / segs, f1 = (i + 1) / segs;
+    const w0 = bw * (1.16 - f0 * 0.5), w1 = bw * (1.16 - f1 * 0.5);
+    ctx.fillStyle = hgrad(ctx, -w0 / 2, w0 / 2, h * f0, [
+      [0, bark[0]], [0.28, bark[1]], [0.72, bark[2]], [1, bark[3]],
+    ]);
+    poly(ctx, [[-w0 / 2, h * f0], [w0 / 2, h * f0], [w1 / 2, h * f1], [-w1 / 2, h * f1]], ctx.fillStyle);
   }
-  // 树冠：只在这根柱子的上三分之一出现，而且是往两边收的锥
+  // 树皮：竖沟，长的短的错开
+  ctx.fillStyle = "rgba(0,0,0,.32)";
   for (let i = 0; i < 5; i++) {
-    const f = i / 5;
-    const y = h * (0.56 + f * 0.4);
-    const rw = w * (0.5 - f * 0.34);
-    ctx.fillStyle = hgrad(ctx, -rw, rw, y, [
+    const x = -bw * 0.42 + bw * (i / 4.2);
+    const y0 = h * (0.02 + hash2(seed, i) * 0.06);
+    ctx.fillRect(x, y0, bw * 0.06, h * (0.3 + hash2(seed, i + 7) * 0.4));
+  }
+  // 树冠：九层，越往上越窄；下面几层被树干劈成左右两片
+  for (let i = 0; i < 9; i++) {
+    const f = i / 9;
+    const y = h * (0.3 + f * 0.66);
+    const rw = w * (0.5 - f * 0.32) * (0.86 + hash2(seed, i + 20) * 0.28);
+    const green = hgrad(ctx, -rw, rw, y, [
       [0, shade(t.leaf2, 0.26)], [0.4, t.leaf], [1, shade(t.leaf, -0.44)],
     ]);
-    poly(ctx, [[0, y + h * 0.14], [-rw, y - h * 0.02], [rw, y - h * 0.02]], ctx.fillStyle);
+    const tip = y + h * (0.1 - f * 0.04);
+    if (f < 0.42) {
+      poly(ctx, [
+        [-rw * 0.12, tip], [-rw, y - h * 0.012], [rw * 0.12, y - h * 0.012], [rw * 0.12, tip],
+      ], green);
+    } else {
+      poly(ctx, [[0, tip], [-rw, y - h * 0.012], [rw, y - h * 0.012]], green);
+    }
   }
 }
 
@@ -182,9 +216,19 @@ export function cactus(ctx, w, h, t, seed) {
     ctx.fillRect(-bw * 0.54, sy, 0.09, 0.02);
     ctx.fillRect(bw * 0.44, sy + h * 0.03, 0.09, 0.02);
   }
-  ctx.fillStyle = "#ff7fae";
+  // 顶上一朵花：**小**。上一版是一颗 0.44 米的粉球，远看就是个棒棒糖。
+  const bloom = ["#ff8fb8", "#ffd27a", "#ff6f9c"][Math.floor(hash2(seed, 31) * 3) % 3];
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * TAU + 0.3;
+    ctx.fillStyle = i % 2 ? bloom : shade(bloom, -0.22);
+    ctx.beginPath();
+    ctx.ellipse(Math.cos(a) * w * 0.035, h * 0.985 + Math.sin(a) * w * 0.022,
+      w * 0.032, w * 0.019, a, 0, TAU);
+    ctx.fill();
+  }
+  ctx.fillStyle = "#ffe9a8";
   ctx.beginPath();
-  ctx.arc(0, h * 1.0, w * 0.1, 0, TAU);
+  ctx.arc(0, h * 0.985, w * 0.018, 0, TAU);
   ctx.fill();
 }
 
@@ -233,103 +277,4 @@ export function stump(ctx, w, h, t, seed) {
   for (let i = 0; i < 3; i++) {
     ctx.fillRect(-w * 0.5 + hash2(seed, i) * w, h * 0.02, 0.14, 0.06);
   }
-}
-
-/** 一堆原木：三层交错码起来，端面是年轮。 */
-export function logpile(ctx, w, h, t, seed) {
-  const r = h * 0.17;
-  for (let row = 0; row < 3; row++) {
-    const n = 3 - row;
-    for (let i = 0; i < n; i++) {
-      const x = -w * 0.36 + (i + row * 0.5) * (w * 0.34);
-      const y = r + row * r * 1.85;
-      ctx.fillStyle = hgrad(ctx, -w * 0.5, w * 0.5, y, [
-        [0, shade(t.wood, 0.28)], [0.4, t.wood], [1, shade(t.wood, -0.44)],
-      ]);
-      ctx.fillRect(x - w * 0.17, y - r, w * 0.34, r * 2);
-      ctx.fillStyle = "#d8bd8e";
-      ctx.beginPath();
-      ctx.ellipse(x + w * 0.16, y, r * 0.28, r * 0.94, 0, 0, TAU);
-      ctx.fill();
-      ctx.fillStyle = "rgba(140,108,66,.7)";
-      ctx.beginPath();
-      ctx.ellipse(x + w * 0.16, y, r * 0.12, r * 0.5, 0, 0, TAU);
-      ctx.fill();
-    }
-  }
-}
-
-/** 巨石：三到四个切面，最亮的那面朝左上。 */
-export function boulder(ctx, w, h, t, seed) {
-  const g = hash2(seed, 3) < 0.5 ? t.stone : shade(t.stone, -0.2);
-  ctx.fillStyle = shade(g, -0.34);
-  poly(ctx, [
-    [-w / 2, 0], [-w * 0.38, h * 0.86], [-w * 0.04, h], [w * 0.42, h * 0.7],
-    [w / 2, h * 0.16], [w * 0.3, 0],
-  ], shade(g, -0.34));
-  ctx.fillStyle = hgrad(ctx, -w / 2, w / 2, h * 0.6, [
-    [0, shade(g, 0.32)], [0.36, g], [1, shade(g, -0.3)],
-  ]);
-  poly(ctx, [
-    [-w * 0.42, h * 0.14], [-w * 0.34, h * 0.8], [-w * 0.02, h * 0.94],
-    [w * 0.28, h * 0.62], [w * 0.16, h * 0.18],
-  ], ctx.fillStyle);
-  ctx.fillStyle = "rgba(255,255,255,.2)";
-  poly(ctx, [[-w * 0.34, h * 0.8], [-w * 0.02, h * 0.94], [-w * 0.06, h * 0.6]], "rgba(255,255,255,.2)");
-  ctx.fillStyle = "rgba(6,9,16,.34)";
-  ctx.beginPath();
-  ctx.ellipse(0, 0.04, w * 0.56, 0.1, 0, 0, TAU);
-  ctx.fill();
-  if (t.snow) snowCap(ctx, -w * 0.34, h * 0.92, w * 0.5, h * 0.14, 0.9);
-}
-
-/** 小石头：巨石的简化版，但没有雪、也矮。 */
-export function rock(ctx, w, h, t) {
-  ctx.fillStyle = shade(t.stone, -0.3);
-  poly(ctx, [[-w / 2, 0], [-w * 0.3, h * 0.9], [w * 0.16, h], [w / 2, h * 0.3], [w * 0.3, 0]],
-    shade(t.stone, -0.3));
-  ctx.fillStyle = hgrad(ctx, -w / 2, w / 2, h * 0.5, [
-    [0, shade(t.stone, 0.3)], [0.4, t.stone], [1, shade(t.stone, -0.36)],
-  ]);
-  poly(ctx, [[-w * 0.34, h * 0.1], [-w * 0.24, h * 0.82], [w * 0.12, h * 0.9], [w * 0.26, h * 0.24]],
-    ctx.fillStyle);
-  ctx.fillStyle = "rgba(0,0,0,.3)";
-  ctx.fillRect(-w * 0.42, 0, w * 0.84, 0.05);
-}
-
-/** 草垛：一卷干草，捆两道绳，端面是螺旋。 */
-export function haybale(ctx, w, h, t, seed) {
-  ctx.fillStyle = hgrad(ctx, -w / 2, w / 2, h / 2, [
-    [0, "#e6cb84"], [0.4, "#cdaa5c"], [1, "#8e7233"],
-  ]);
-  ctx.fillRect(-w / 2, 0, w, h * 0.92);
-  ctx.fillStyle = "rgba(90,70,30,.3)";
-  for (let i = 0; i < 14; i++) {
-    ctx.fillRect(-w / 2 + hash2(seed, i) * w, h * (0.1 + hash2(seed, i + 20) * 0.8), 0.22, 0.026);
-  }
-  ctx.fillStyle = "#8a6a3a";
-  for (const f of [0.3, 0.7]) ctx.fillRect(-w / 2, h * f, w, 0.05);
-  ctx.fillStyle = "rgba(6,9,16,.3)";
-  ctx.beginPath();
-  ctx.ellipse(0, 0.03, w * 0.54, 0.08, 0, 0, TAU);
-  ctx.fill();
-}
-
-/** 风滚草：一团干枝。小，但飘在路边特别有电影感。 */
-export function tumble(ctx, w, h, t, seed) {
-  ctx.strokeStyle = shade(t.wood, -0.1);
-  ctx.lineWidth = 0.028;
-  const r = Math.min(w, h) * 0.5;
-  for (let i = 0; i < 11; i++) {
-    const a = (i / 11) * TAU + hash2(seed, i) * 0.4;
-    ctx.beginPath();
-    ctx.moveTo(0, r);
-    ctx.lineTo(Math.cos(a) * r * 1.1, r + Math.sin(a) * r * 0.9);
-    ctx.stroke();
-  }
-  ctx.strokeStyle = "rgba(200,180,140,.5)";
-  ctx.lineWidth = 0.02;
-  ctx.beginPath();
-  ctx.arc(0, r, r * 0.72, 0, TAU);
-  ctx.stroke();
 }
