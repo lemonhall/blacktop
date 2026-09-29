@@ -1,21 +1,18 @@
 /**
- * 一局比赛的"开、进、退"：把名册变成场上的实体，以及中途进出的人怎么落位。
+ * 一场比赛的"开、进、退"：把名册变成场上的车手，以及中途进出的人怎么落位。
  *
  * 与 `room-state.mjs` 的分工：那边管**名册**（谁在房里、谁是房主），
- * 这边管**场上**（谁在哪、属于哪队、有没有实体）。两边都只吃普通对象。
+ * 这边管**场上**（谁在哪、骑什么车、有没有实体）。两边都只吃普通对象。
  */
 
-import { DT } from "../sim/constants.mjs";
-import { MODES } from "../sim/data.mjs";
-import { createWorld, startMatch, fillRoster } from "../sim/world.mjs";
-import { newActor } from "../sim/actor.mjs";
-import { findOpen, spawnPoints } from "../sim/map.mjs";
-import { encodeMap } from "../sim/wire.mjs";
-import { stepWorld } from "../sim/step.mjs";
+import { MAX_RACERS } from "../sim/data.mjs";
 import { resetQueue } from "../sim/netcode.mjs";
-import { rosterOf, clearReady } from "./room-state.mjs";
+import { newRacer } from "../sim/racer.mjs";
+import { encodeMap } from "../sim/wire.mjs";
+import { createWorld, fillRoster, leadZ, startMatch } from "../sim/world.mjs";
+import { clearReady, rosterOf } from "./room-state.mjs";
 
-/** 开一局新的：换种子、重铺地图、重排出生点。房主点一次"开始"就走到这里。 */
+/** 开一局新的：换种子、重铺赛道、重排发车格。房主点一次"开跑"就走到这里。 */
 export function beginMatch(state, now = Date.now()) {
   const seed = randomSeed();
   const world = createWorld({
@@ -35,172 +32,111 @@ export function resetMatch(state, world) {
   state.phase = "staging";
   state.results = null;
   state.startedAt = 0;
-  // 回到候场就得重新举手：上一局开打前的那次 ready 不能顺延到下一局，
+  // 回到候场就得重新举手：上一局开跑前的那次 ready 不能顺延到下一局，
   // 否则房主可以对着"全都没动过"的名册直接再开一局，等于把确认又变成了摆设。
   clearReady(state);
-  if (world) { world.phase = "staging"; world.actors = []; }
+  if (world) { world.phase = "staging"; world.racers = []; }
 }
 
 /**
- * 对局进行中有人进来：直接给他一个实体丢进场。
+ * 比赛进行中有人进来：直接给他一台车丢进路上。
  *
- * 这是刻意做的选择——观众席那种"先等着"对一个小体量 demo 只会增加概念负担，
- * 而"随时能进场补位"恰好是房主放机器人这个设定天然能兜住的。
+ * 落位是这件事里唯一需要动脑子的地方。扔在起点等于让他在三公里外独自骑；
+ * 扔在领跑者前面又等于空降抢第一。所以：**落在领跑者身后 45 米、速度给全场的
+ * 平均速度**——他会看见前面一串尾灯，追得上，但一分钱便宜都没占。
  */
 export function joinLive(world, member) {
   if (!world || world.phase !== "live") return null;
-  if (world.actors.some(a => a.ownerId === member.playerId)) return null;
-  // 中途进来的人，自己选的边优先（还是那句话：想和朋友一队是合理的），
-  // 没选过才按场上人数自动补。
-  const chosen = member.team === 0 || member.team === 1 ? member.team : null;
-  const team = chosen !== null && world.mode === "control" ? chosen : pickTeam(world);
-  makeRoom(world, team);
-  const index = world.actors.length;
-  const [sx, sy] = spawnPoints(world, index, index + 1);
-  const p = findOpen(world, sx, sy);
-  const actor = newActor(world, {
-    id: world.nextEntity++, kind: "human", ownerId: member.playerId,
-    type: member.hero, gadget: member.gadget, x: p.x, y: p.y, team, name: member.name,
+  if (world.racers.some(r => r.ownerId === member.playerId)) return null;
+  makeRoom(world);
+  const slot = joinSlot(world);
+  const racer = newRacer(world, {
+    id: world.nextEntity++,
+    kind: "human",
+    ownerId: member.playerId,
+    name: member.name,
+    bike: member.bike,
+    palette: (world.racers.length * 3) % 8,
+    skill: 1,
+    grid: slot,
   });
-  world.actors.push(actor);
-  return actor;
+  racer.gridIndex = world.racers.length;
+  racer.v = slot.v;
+  world.racers.push(racer);
+  return racer;
 }
 
 /**
- * 场上满了就先挪走一个机器人：**真人进来占掉机器人名额**——建房的提示里就是这么
- * 写的，机器人本来就是拿来补位的。不做这一步的话，3v3 会在补位时变成 4v3、4v4，
- * "最多几个人"这件事就没有一处是准的。
- *
- * 挑谁？优先同一队、优先**已经倒下**的那个（少影响一个正在打的）。一个都挑不出
- * （场上全是真人）就直接算了，宁可超编也不赶真人。
+ * 场上满了就先挪走一个机器人：**真人进来占掉机器人名额**——建房的提示里就是
+ * 这么写的，机器人本来就是拿来补位的。挑谁？优先**落后最多**的那个，少影响
+ * 一个正在缠斗的人。真人的上限本来就是 2，所以"把真人挤下去"这种局面不存在。
  */
-function makeRoom(world, team) {
-  const cap = (MODES[world.mode] || MODES.control).maxHumans;
-  if (world.actors.length < cap) return;
-  const bots = world.actors.filter(a => a.kind !== "human");
-  const sameTeam = bots.filter(a => a.team === team);
-  const pool = sameTeam.length ? sameTeam : bots;
-  if (!pool.length) return;
-  const victim = [...pool].sort((a, b) => Number(a.alive) - Number(b.alive))[0];
-  world.actors = world.actors.filter(a => a !== victim);
+function makeRoom(world) {
+  if (world.racers.length < MAX_RACERS) return;
+  const bots = world.racers.filter(r => r.kind !== "human");
+  if (!bots.length) return;
+  const victim = [...bots].sort((a, b) => a.z - b.z)[0];
+  world.racers = world.racers.filter(r => r !== victim);
+}
+
+/** 半路加入的落点：领跑者身后一小段，速度取全场平均（否则一进来就被套圈）。 */
+function joinSlot(world) {
+  const z = Math.max(0, leadZ(world) - 45);
+  let sum = 0;
+  for (const r of world.racers) sum += r.v;
+  const v = world.racers.length ? sum / world.racers.length : 30;
+  return { x: world.track.laneX(freeLane(world, z)), z, v };
+}
+
+/** 挑一条"这个位置附近没人"的车道；都有人就挑最空的那条。 */
+function freeLane(world, z) {
+  let best = 0, bestD = -1;
+  for (let i = 0; i < world.track.lanes; i++) {
+    const x = world.track.laneX(i);
+    let d = Infinity;
+    for (const r of world.racers) {
+      if (Math.abs(r.z - z) > 26) continue;
+      d = Math.min(d, Math.abs(r.x - x));
+    }
+    if (d === Infinity) return i;
+    if (d > bestD) { bestD = d; best = i; }
+  }
+  return best;
 }
 
 /**
  * 把人从场上**彻底拿掉**（踢人用）。
  *
- * 和 `dropPlayer`（掉线）刻意分开：掉线的人只是失去输入，角色留在原地挨打，
- * 回来还能接着用；被踢的人是真被请走了，留着一个不动的角色只会让大家以为他挂机。
+ * 和 `dropPlayer`（掉线）刻意分开：掉线的人只是失去输入，车留在原地挨撞，
+ * 回来还能接着用；被踢的人是真被请走了，留着一台不动的车只会让大家以为他挂机。
  */
 export function ejectFromWorld(world, playerId) {
   if (!world) return false;
-  const before = world.actors.length;
-  world.actors = world.actors.filter(a => a.ownerId !== playerId);
-  return world.actors.length !== before;
+  const before = world.racers.length;
+  world.racers = world.racers.filter(r => r.ownerId !== playerId);
+  return world.racers.length !== before;
 }
 
 /**
  * 掉线：清掉还没消化的输入命令。
  *
- * 刻意**不**把角色从场上拿掉——那样会让"重连"变成一个需要重放名额的复杂状态机。
- * 角色留在原地挨打（热点争夺里还会按既有规则重生），重连上来接着用同一个实体。
- * 但命令队列必须清空：那是"我接下来还要往哪走"的债，人不在了就不该继续走。
+ * 刻意**不**把车从场上拿掉——那样会让"重连"变成一个需要重放名额的状态机。
+ * 车留在路上（会被撞、会摔），重连上来接着用同一台。但命令队列必须清空：
+ * 那是"我接下来还要往哪走"的债，人不在了就不该继续兑现。
  */
 export function dropPlayer(world, playerId) {
   if (!world) return;
-  const actor = world.actors.find(a => a.ownerId === playerId);
-  if (actor) resetQueue(actor);
+  const racer = world.racers.find(r => r.ownerId === playerId);
+  if (racer) resetQueue(racer);
 }
 
 export function actorIdOf(world, playerId) {
-  const a = world?.actors.find(x => x.ownerId === playerId);
-  return a ? a.id : 0;
-}
-
-function pickTeam(world) {
-  if (world.mode !== "control") return world.actors.length;
-  const alive = [0, 0];
-  for (const a of world.actors) if (a.alive) alive[a.team]++;
-  return alive[0] <= alive[1] ? 0 : 1;
+  const r = world?.racers.find(x => x.ownerId === playerId);
+  return r ? r.id : 0;
 }
 
 function randomSeed() {
   const buf = new Uint32Array(1);
   crypto.getRandomValues(buf);
   return buf[0] || 1;
-}
-
-/**
- * 快进：把世界推进到"现在"。
- *
- * **这个函数保证世界的平均推进速度和墙上时钟一致**，这一点是画面平滑的根。原来
- * 它每次只算 `floor(经过时间 / 16.67ms)` 步，剩下那不足一格的零头**直接扔掉**：
- * 消息每 40ms 来一条时，每次丢 0~16ms，平均世界时间比真实时间慢百分之十几。
- * 客户端按真实时间插值，于是它的"渲染头"一会儿追过服务端的数据（只能冻住等），
- * 一会儿又被新的快照拽回去——眼睛看到的就是**幻灯片**。
- *
- * 修法是把零头**记账**：累积到 `world.stepCarry`，够一格就走一步。这样世界既不
- * 丢时间（不会比真时间慢），也不会滚雪球（不会一次补出几百步）。
- * `maxTicks` 仍然保留，只用来防止一次长时间的挂起把 CPU 打满。
- */
-export function advanceWorld(world, lastTickMs, now, maxTicks) {
-  if (!world || world.phase !== "live") return lastTickMs;
-  const stepMs = 1000 / 60;
-  const elapsed = now - lastTickMs;
-  if (elapsed <= 0) return lastTickMs;
-  const total = (world.stepCarry || 0) + elapsed;
-  let steps = Math.floor(total / stepMs);
-  if (steps <= 0) { world.stepCarry = total; return now; }
-  // 超预算只削掉**这一步**要补的量，剩下的零头照记——削掉的是"这一次的欠账"，
-  // 而不是"世界该有的时间"。两者混为一谈就会重新开始丢时间。
-  const extra = Math.max(0, steps - maxTicks);
-  steps = Math.min(steps, maxTicks);
-  world.stepCarry = total - (steps + extra) * stepMs;
-  for (let i = 0; i < steps; i++) {
-    if (world.phase !== "live") break;
-    stepWorld(world, DT);
-  }
-  return now;
-}
-
-export const modeOf = m => MODES[m] || MODES.control;
-
-/**
- * 节拍网格的**纯算术部分**：该不该在这一刻发牌，世界要推进到哪一刻，下一拍排在哪。
- *
- * 抽出来单独一个函数有两个理由：`room.mjs` 那个 Durable Object 在 Node 里根本起不来
- * （`cloudflare:workers` 不存在），而这里恰恰是最容易写错、最值得钉死的一段算术；
- * 而且"网格"这个概念本身跟 WebSocket、跟 DO 都没关系，它只是"时间怎么对齐"。
- *
- * 约定：
- *   - 未开始（`nextBcastMs` 为 0）→ 以 `now` 为原点，返回第一拍的时刻；
- *   - 没到点 → 返回 `null`，调用方什么都不做；
- *   - 到点（包括晚到）→ `target` 是**网格上应该到的时刻**（永远 ≤ `now`），世界推到
- *     那里为止；`skipped` 是中间被跳掉的格子数（DO 被冻了一会儿）。跳过的格子只丢
- *     快照、**不丢世界时间**，否则世界会比墙上时钟永久落后。
- */
-export function beatGrid({ now, nextBcastMs, broadcastMs = 50 }) {
-  if (!nextBcastMs) return { target: now, next: now + broadcastMs, skipped: 0, started: true };
-  if (now < nextBcastMs) return null;
-  const skipped = Math.floor((now - nextBcastMs) / broadcastMs);
-  const target = nextBcastMs + skipped * broadcastMs;
-  return { target, next: target + broadcastMs, skipped, started: false };
-}
-
-/**
- * "这个房间该不该回收"——和 `beatGrid` 一样抽成纯函数，因为它是**破坏性**的那一步
- * （回收会把名册清空、把对局扔掉），而 `room.mjs` 在 Node 里起不来（`cloudflare:workers`）。
- *
- * 两条判据，缺一不可：
- *   - `empty`：一个连接都没有了。正常退房走的都是这一条；
- *   - `silent`：还有连接，但**整整 `idleMs` 没有收到过任何消息**。客户端 2 秒一个心跳，
- *     所以这只会命中"连接其实是僵尸"的情况。
- *
- * 曾经用 `state.updatedAt`（名册最后变动时间）当判据，那是错的：一局从头打到尾
- * 名册一次都不动，于是对局进行到第 10 分钟，房间会被自己的 alarm 拆掉——名册清空、
- * 世界扔掉，而玩家还连着、还在打。
- */
-export function reclaimReason({ conns = 0, lastMsgMs = 0, now = 0, idleMs = 30 * 60_000 }) {
-  if (conns <= 0) return "empty";
-  if (lastMsgMs && now - lastMsgMs > idleMs) return "silent";
-  return "";
 }

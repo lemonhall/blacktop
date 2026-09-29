@@ -10,10 +10,13 @@ import { randomKey, sha256Hex } from "./auth.mjs";
 
 const DEFAULT_RULES = {
   maxRooms: 20,
-  // 这里给的是"租户允许的上限"，不是每个模式的实际上限：3v3 会被模式压到 6 人，
-  // 混战则真的能开到 10 人。写成 6 的话混战永远开不满，是个很容易踩的坑。
-  maxHumansPerRoom: 10,
-  maxBotsPerRoom: 9,
+  // 这里给的是"租户允许的上限"，不是每个模式的实际上限。赛车的满员是
+  // 15 台（1 名玩家 + 14 个对手，见 `sim/data.mjs` 的 MAX_RACERS），
+  // 而**真人的上限是 2**——再多就该去开第二个房间了。
+  // 这两个数写成"模式上限"是错的方向：房主想开一场 1v1 就不要机器人，
+  // 想开满员就把机器人拉满，调节权在他手里。
+  maxHumansPerRoom: 2,
+  maxBotsPerRoom: 13,
   allowGuestSessions: true,
   allowedOrigins: ["*"],
 };

@@ -18,7 +18,7 @@ export const MODES = {
   city: {
     id: "city", name: "夜色环路", sub: "CITY LOOP",
     desc: "四车道柏油路 · 车流最密 · 弯道碎",
-    lanes: 4, length: 3600, trafficMs: 620, dayunMs: 34000,
+    lanes: 4, length: 3600, trafficMs: 1500, dayunMs: 26000,
     curveA: 1 / 240, curveB: 1 / 720, hillA: 5.5, hillB: 2.2,
     sky: "dusk", ground: "city",
     maxHumans: 2, bots: 13,
@@ -26,7 +26,7 @@ export const MODES = {
   wild: {
     id: "wild", name: "荒野公路", sub: "OPEN ROAD",
     desc: "双车道 · 土路肩 · 长弯大坡 · 车流稀疏",
-    lanes: 2, length: 4200, trafficMs: 1150, dayunMs: 46000,
+    lanes: 2, length: 4200, trafficMs: 2400, dayunMs: 34000,
     curveA: 1 / 420, curveB: 1 / 260, hillA: 11, hillB: 4.5,
     sky: "noon", ground: "open",
     maxHumans: 2, bots: 13,

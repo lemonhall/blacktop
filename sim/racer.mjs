@@ -17,9 +17,13 @@ export const NITRO_TIME = 2.4;
 export const NITRO_CD = 9;
 
 export const TUNE = {
-  regen: 8.5, regenDelay: 3.4,
+  // 体力回得快、掉得慢，是**刻意**的：一局里被撂倒三五次是刺激，被撂倒二十次
+  // 是折磨。所有"打架很凶"的观感都该来自拳头挥出去的那一下，而不是来自掉血速度。
+  regen: 11, regenDelay: 3.0,
   attackCost: 5, attackCd: 0.5, swing: 0.3,
-  punchDmg: 20, kickBonus: 7,
+  /** 被打的人有 0.4 秒的"缓一下"：没有这道闸门，三台车并排时能在一秒内把人打下车。 */
+  hurtDelay: 0.4,
+  punchDmg: 17, kickBonus: 7,
   wreck: 2.0, wreckHeavy: 2.8,
   recover: 62, recoverSpeed: 0.34,
   shoulderCap: 0.64, offroadDrag: 1.6,
@@ -64,6 +68,12 @@ export function stepRacer(w, r, dt, input = {}) {
   a -= drag * r.v * r.v * (road ? 1 : TUNE.offroadDrag);
   r.v = clamp(r.v + a * dt, 0, cap);
   if (r.v > r.topV) r.topV = r.v;
+  // 前进。这一步**必须**在算完 v 之后、压车之前：压车的难度与离心力都跟速度
+  // 挂钩，而"这一格走多远"用的就是刚刚更新过的那个速度。
+  r.z += r.v * dt;
+  // 冲线之后还能往前滑一段（进缓冲区），但不能无限跑下去——那会让"世界的长度"
+  // 变成一个没有上界的数，车流回收的判据跟着一起失效。
+  if (r.z > w.track.length + 90) r.z = w.track.length + 90;
 
   // 压车：速度越高越难压（这是"极速车弯道吃亏"的来源），弯道里还有一股离心力。
   const turn = spec.turn * (1.28 - 0.6 * (r.v / spec.vmax));
@@ -154,6 +164,7 @@ function punchTarget(w, r) {
     const dz = o.z - r.z;
     const dx = o.x - r.x;
     if (dz < -2.4 || dz > 3.8 || Math.abs(dx) > 1.75) continue;
+    if (w.time - o.lastHit < TUNE.hurtDelay) continue;
     const score = (dz < 0 ? -dz * 1.6 : dz) + Math.abs(dx) * 0.7;
     if (score < bestScore) { best = o; bestScore = score; }
   }
@@ -168,7 +179,9 @@ function collideTraffic(w, r) {
     const info = VEHICLES[v.kind];
     if (Math.abs(v.z - r.z) > (info.len + 2.2) * 0.5) continue;
     if (Math.abs(v.x - r.x) > info.wid * 0.5 + 0.55) continue;
-    const heavy = v.kind === "dayun" || v.kind === "truck";
+    // 伤害来自**速度差**：迎面撞上的（对面车、大运、重卡）比追尾狠得多。
+    // 这条不是为了惩罚，而是为了让"贴着对向车道超车"这件事真的需要胆量。
+    const heavy = v.dir === -1 || v.kind === "dayun" || v.kind === "truck";
     r.hitCd = 1.1;
     wreck(w, r, { kind: v.dir === -1 ? "headon" : "rear", heavy });
     return true;
@@ -202,7 +215,8 @@ export function wreck(w, r, { kind = "crash", by = 0, heavy = false } = {}) {
   r.crashes++;
   r.stamina = 0;
   r.lat += Math.sign(r.x || 1) * 5.2;
-  r.v *= 0.42;
+  // 躺得久的人也应该掉得更狠：否则"重摔"就只是画面上多躺一秒。
+  r.v *= heavy ? 0.2 : 0.42;
   r.lean = 0;
   resetQueue(r);
   w.events.push({ k: "wreck", a: r.id, s: kind, by, z: r.z, x: r.x, v: Math.round(r.v * KMH) });

@@ -19,7 +19,7 @@
  */
 
 import { MAX_CATCHUP_TICKS } from "../sim/constants.mjs";
-import { advanceWorld, beatGrid } from "./room-match.mjs";
+import { advanceWorld, beatGrid } from "./room-clock.mjs";
 import { BROADCAST_MS } from "./room-consts.mjs";
 
 export class MatchTicker {

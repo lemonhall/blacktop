@@ -1,13 +1,18 @@
 /**
- * 房间的名册与权限：谁在房里、谁是房主、放几个机器人、能不能开局。
+ * 房间的名册与权限：谁在房里、谁是房主、放几个机器人、能不能开跑。
  *
  * 这一层是**纯函数**，不碰 storage、不碰 socket。理由很实际：房间权限是最容易
  * 出安全漏洞的地方（谁能踢人、谁能改人数、谁能开局），把它抽成纯函数之后，
  * 每一条规则都能用一个 assert 钉死，不用起 workerd。
+ *
+ * 和射击版（fray）最大的差别：这里**没有队**。赛车各自为战，所以"选边"这一栏
+ * 换成了"**选车**"——街霸 400 / 暴走 750 / 铁马 1200 是三种取舍，不是三级升级。
+ * 除此之外的流程（举手、踢人、中途加入开关、房主开局）一模一样，因为它本来
+ * 就是对的。
  */
 
-import { GADGETS, MODES } from "../sim/data.mjs";
 import { clamp } from "../sim/constants.mjs";
+import { BIKES, MODES } from "../sim/data.mjs";
 
 export const PHASES = ["staging", "live", "over"];
 
@@ -18,32 +23,37 @@ const UNLIMITED = 99;
  * 被房主踢掉之后多久不许再进同一个房间。
  *
  * 没有这道闸门，"踢人"就是一句空话：被踢的人重新点一下房间卡片就回来了，房主
- * 只能反复踢。十分钟是个刻意的短窗口——足够让房主把开局进行下去，又不至于像
- * "封禁"那样需要一套申诉与解封的流程。
+ * 只能反复踢。十分钟是个刻意的短窗口——足够让房主把这一局进行下去，又不像
+ * "封禁"那样需要一套申诉流程。
  */
 export const KICK_BAN_MS = 10 * 60_000;
 
 /**
- * 人数上限有两层：**租户规则**（这个租户允许开多大的局）和**模式上限**
- * （3v3 就是 6 个人，混战就是 10 个）。生效值取两者较小的那个，并且两个原值都留在
- * 状态里——否则从混战切回 3v3 再切回去，上限就会一路被"取最小"吃到只剩个位数。
+ * 人数上限有两层：**租户规则**（这个租户允许开多大的局）和**模式上限**。
+ * 生效值取两者较小的那个，并且两个原值都留在状态里——否则换模式再换回来，
+ * 上限会被"取最小"一路吃到只剩个位数。
  */
-export function createRoomState({ tenant, roomId, name, mode = "control", difficulty = 1, bots = 4, hostId, hostName, maxHumans, maxBots, joinLive = true, now = Date.now() }) {
-  const cfg = MODES[mode] || MODES.control;
+export function createRoomState({
+  tenant, roomId, name, mode = "city", difficulty = 1, bots = 13,
+  hostId, hostName, maxHumans, maxBots, joinLive = true, now = Date.now(),
+}) {
+  const cfg = MODES[mode] || MODES.city;
   const humansRule = Number.isFinite(maxHumans) ? Math.max(1, maxHumans) : UNLIMITED;
   const botsRule = Number.isFinite(maxBots) ? Math.max(0, maxBots) : UNLIMITED;
   return {
     tenant, roomId,
     name: (name || "新房间").slice(0, 24),
-    mode: cfg.id, difficulty: clamp(Math.floor(difficulty), 0, 2),
+    mode: cfg.id,
+    difficulty: clamp(Math.floor(difficulty), 0, 2),
     bots: clamp(Math.floor(bots), 0, Math.min(botsRule, cfg.bots)),
     hostId, hostName: hostName || "",
-    // 房主开的开关：对局进行中允不允许真人进来补位。
+    // 房主开的开关：比赛进行中允不允许真人进来补位。
     joinLive: joinLive !== false,
     phase: "staging",
     createdAt: now, updatedAt: now,
     humansRule, botsRule,
-    maxHumans: Math.min(humansRule, cfg.maxHumans), maxBots: Math.min(botsRule, cfg.bots),
+    maxHumans: Math.min(humansRule, cfg.maxHumans),
+    maxBots: Math.min(botsRule, cfg.bots),
     members: [],
     // 踢过人之后记在这里（playerId → 时刻），重进时用它挡住。
     kicked: {},
@@ -51,7 +61,8 @@ export function createRoomState({ tenant, roomId, name, mode = "control", diffic
   };
 }
 
-export const participantCap = state => MODES[state.mode].maxHumans + 0;
+/** 一场比赛最多几个真人。上限之上是"机器人补位"，不是"更多人挤进来"。 */
+export const participantCap = state => (MODES[state.mode] || MODES.city).maxHumans + 0;
 
 /** 禁令只值十分钟，顺手把过期的那几条丢掉——这个表不该跟着房间一起长。 */
 function pruneKicks(state, now) {
@@ -60,29 +71,28 @@ function pruneKicks(state, now) {
   }
 }
 
-export function addMember(state, { playerId, name, hero = 0, gadget = "grenade", now = Date.now() }) {
+const clampBike = v => clamp(Math.floor(Number(v) || 0), 0, BIKES.length - 1);
+
+export function addMember(state, { playerId, name, bike = 0, now = Date.now() }) {
   const existing = state.members.find(m => m.playerId === playerId);
   if (existing) {
+    // 重连/刷新：名字可以改，车型保留他上次选的（除非这次明确传了）。
     existing.name = name || existing.name;
-    existing.hero = Number.isFinite(hero) ? hero : existing.hero;
-    if (GADGETS[gadget]) existing.gadget = gadget;
+    if (Number.isFinite(bike)) existing.bike = clampBike(bike);
     state.updatedAt = now;
     return { ok: true, member: existing, rejoined: true };
   }
   pruneKicks(state, now);
   const until = (state.kicked || {})[playerId];
   if (until && now - until < KICK_BAN_MS) return { ok: false, error: "kicked" };
-  // 满员一律拒绝，不管在哪个阶段：对局中"无限补位"会让 3v3 变成 8v3。
+  // 满员一律拒绝，不管在哪个阶段：对局中"无限补位"会让两个人的比赛变成五个人。
   if (state.members.length >= state.maxHumans) return { ok: false, error: "room_full" };
-  // 房主关掉中途加入之后，对局进行中就不再收新人（重连的老成员在上面已经放行）。
+  // 房主关掉中途加入之后，比赛进行中就不再收新人（重连的老成员在上面已经放行）。
   if (state.phase !== "staging" && !state.joinLive) return { ok: false, error: "join_closed" };
   const member = {
     playerId,
     name: (name || "玩家").slice(0, 16),
-    hero: clamp(Math.floor(hero), 0, 3),
-    gadget: GADGETS[gadget] ? gadget : "grenade",
-    // `team` 是**人类自己选的边**，null = 交给服务端按人少的一边自动分。
-    team: null,
+    bike: clampBike(bike),
     ready: false, joinedAt: now, readyAt: 0,
   };
   state.members.push(member);
@@ -99,6 +109,8 @@ export function removeMember(state, playerId, now = Date.now()) {
   state.members = state.members.filter(m => m.playerId !== playerId);
   if (state.members.length === before) return false;
   if (state.hostId === playerId) {
+    // 房主走了就把钥匙交给**最早进来**的那个人，而不是随机一个——
+    // 房主一言不合就退的时候，剩下的人不该抽签决定谁管事。
     const next = [...state.members].sort((a, b) => a.joinedAt - b.joinedAt)[0];
     state.hostId = next ? next.playerId : "";
     state.hostName = next ? next.name : "";
@@ -109,17 +121,18 @@ export function removeMember(state, playerId, now = Date.now()) {
 
 export const isHost = (state, playerId) => !!playerId && state.hostId === playerId;
 
-/** 换战术装置：每个人的装置是自己的事，房主也不能替别人选。 */
-export function setMemberGadget(state, playerId, gadget, now = Date.now()) {
+/** 换车：每个人只能改自己的车，房主也不能替别人选。 */
+export function setMemberBike(state, playerId, bike, now = Date.now()) {
   const member = state.members.find(m => m.playerId === playerId);
-  if (!member || !GADGETS[gadget]) return false;
-  member.gadget = gadget;
+  if (!member || state.phase !== "staging") return false;
+  if (!Number.isFinite(bike)) return false;
+  member.bike = clampBike(bike);
   state.updatedAt = now;
   return true;
 }
 
 /**
- * 举手报到。**房主不需要 ready**——他的"开打"按钮本身就是他的表态，
+ * 举手报到。**房主不需要 ready**——他的"开跑"按钮本身就是他的表态，
  * 再让他先点一次 ready 只是给开局加一道没意义的仪式。
  */
 export function setReady(state, playerId, ready, now = Date.now()) {
@@ -134,34 +147,6 @@ export function setReady(state, playerId, ready, now = Date.now()) {
 /** 除了房主之外，还有谁没举手——界面用它显示"谁在磨蹭"，开局校验也用它。 */
 export const pendingReady = state =>
   state.members.filter(m => m.playerId !== state.hostId && !m.ready);
-
-/** 某一队现在占了多少真人名额。 */
-export const teamCount = (state, team) => state.members.filter(m => m.team === team).length;
-
-/** 每个模式允许一边站几个真人（混战没有队，返回 0）。 */
-export const perTeamCap = state => MODES[state.mode].humansPerTeam || 0;
-
-/**
- * 选边：**每个人只能改自己的队**，房主也不能替别人选（和换装置同一个道理）。
- * 传 `null` 表示"放弃选边、交给服务端自动分"。一边满了就拒绝，而不是排队——
- * 排队会让界面出现"我点了红队但系统把我放蓝队"这种说不清的状态。
- */
-export function setTeam(state, playerId, team, now = Date.now()) {
-  const member = state.members.find(m => m.playerId === playerId);
-  const cap = perTeamCap(state);
-  if (!member || !cap || state.phase !== "staging") return false;
-  if (team === null || team === undefined || team === "auto") {
-    member.team = null;
-    state.updatedAt = now;
-    return true;
-  }
-  const want = Math.floor(Number(team));
-  if (!Number.isInteger(want) || want < 0 || want >= MODES[state.mode].teams) return false;
-  if (want !== member.team && teamCount(state, want) >= cap) return false;
-  member.team = want;
-  state.updatedAt = now;
-  return true;
-}
 
 /** 房主把人请出去，并记下"十分钟内别再进来"（见 KICK_BAN_MS）。 */
 export function kickMember(state, playerId, now = Date.now()) {
@@ -185,8 +170,8 @@ export function setConfig(state, patch, now = Date.now()) {
     state.maxHumans = Math.min(state.humansRule ?? cfg.maxHumans, cfg.maxHumans);
     state.maxBots = Math.min(state.botsRule ?? cfg.bots, cfg.bots);
     state.bots = Math.min(state.bots, state.maxBots);
-    // 模式一换，队形就换了：选边与举手都作废，否则带着"蓝队"进混战是个悬空状态。
-    for (const m of state.members) { m.team = null; m.ready = false; }
+    // 换赛道就是换一场比赛：举手作废，房主得重新确认大家还在。
+    for (const m of state.members) m.ready = false;
   }
   if (patch.difficulty !== undefined) state.difficulty = clamp(Math.floor(patch.difficulty), 0, 2);
   state.updatedAt = now;
@@ -194,10 +179,10 @@ export function setConfig(state, patch, now = Date.now()) {
 }
 
 /**
- * 开局的准入条件：至少两名参战者、不超编、且**所有非房主的真人都举过手**。
+ * 开跑的准入条件：至少两名参战者、不超编、且**所有非房主的真人都举过手**。
  *
- * 最后一条是这一版新加的：房主按下的"开打"只代表他自己，别人还在翻配置页的时候
- * 就被拖进对局，是这套东西里最容易被骂的一个细节。
+ * 最后一条是必须的：房主按下的"开跑"只代表他自己，别人还在翻配置页的时候就被
+ * 拖进比赛，是这套东西里最容易被骂的一个细节。
  */
 export function startCheck(state) {
   const total = state.members.length + state.bots;
@@ -205,41 +190,38 @@ export function startCheck(state) {
   if (total < 2) return { ok: false, error: "need_two" };
   if (total > state.maxHumans + state.maxBots) return { ok: false, error: "too_many" };
   const pending = pendingReady(state);
-  if (pending.length) {
-    return { ok: false, error: "not_ready", pending: pending.map(m => m.name) };
-  }
+  if (pending.length) return { ok: false, error: "not_ready", pending: pending.map(m => m.name) };
   return { ok: true, total };
 }
 
-/** 回到候场：所有举手作废，大家重新表态（换模式、重开一局都走这里）。 */
+/** 回到候场：所有举手作废，大家重新表态（换赛道、再来一局都走这里）。 */
 export function clearReady(state, now = Date.now()) {
   for (const m of state.members) m.ready = false;
   state.updatedAt = now;
 }
 
-/** 给 Room 用的名册：人类在前（他们选的边优先），机器人补位。 */
+/** 给 Room 用的名册：真人排前面（发车格靠前是给他们的体面），机器人补位。 */
 export function rosterOf(state) {
   return state.members.map(m => ({
-    kind: "human", ownerId: m.playerId, name: m.name, type: m.hero, gadget: m.gadget,
-    team: m.team,
+    kind: "human", ownerId: m.playerId, name: m.name, bike: m.bike,
   }));
 }
 
 export function publicView(state) {
+  const cfg = MODES[state.mode] || MODES.city;
   return {
     id: state.roomId,
     name: state.name,
     mode: state.mode,
-    modeName: MODES[state.mode].name,
+    modeName: cfg.name,
     difficulty: state.difficulty,
     phase: state.phase,
     humans: state.members.length,
     bots: state.bots,
     // 上限一律报**生效值**（租户规则与模式上限取小的那个）。报模式上限的话，
-    // 一个"只允许 4 人"的租户会显示 4/6，快速匹配还会照 6 挑房间，把人塞进满员房。
+    // 一个"只允许 1 个真人"的租户会显示 1/2，快速匹配还会照 2 挑房间。
     capacity: state.maxHumans,
     host: state.hostName,
-    // 房间列表上要能一眼看出"这桌还能不能中途加入""有几个人已经举手了"。
     join: state.joinLive !== false,
     ready: state.members.filter(m => m.ready).length,
     pending: pendingReady(state).length,
@@ -249,7 +231,7 @@ export function publicView(state) {
 
 /** 给玩家看的细节版。`now` 由调用方传进来——偷读 `Date.now()` 会让这一层不再是纯函数。 */
 export function view(state, selfId, now = Date.now()) {
-  const cfg = MODES[state.mode];
+  const cfg = MODES[state.mode] || MODES.city;
   const me = state.members.find(m => m.playerId === selfId) || null;
   const pending = pendingReady(state);
   return {
@@ -260,18 +242,16 @@ export function view(state, selfId, now = Date.now()) {
     mode: state.mode,
     modeName: cfg.name,
     sub: cfg.sub,
+    trackDesc: cfg.desc,
     diff: state.difficulty,
     bots: state.bots,
     maxBots: state.maxBots,
     capacity: state.maxHumans,
-    perTeam: perTeamCap(state),
-    teams: cfg.teams || 0,
     join: state.joinLive !== false,
     host: state.hostId,
     startedAt: state.startedAt,
     members: state.members.map(m => ({
-      id: m.playerId, n: m.name, hero: m.hero, g: m.gadget,
-      tm: m.team === 0 || m.team === 1 ? m.team : -1,
+      id: m.playerId, n: m.name, bike: m.bike,
       rdy: m.ready ? 1 : 0,
       // 磨蹭了多久（毫秒）。房主凭这个数决定要不要踢人——"等得久"要看得见，
       // 否则"踢掉那个不 ready 的"就只能凭印象。
@@ -282,9 +262,9 @@ export function view(state, selfId, now = Date.now()) {
       id: selfId,
       host: isHost(state, selfId),
       ready: !!(me && me.ready),
-      team: me && (me.team === 0 || me.team === 1) ? me.team : -1,
+      bike: me ? me.bike : 0,
     },
-    // 界面据此决定"开打"按钮亮不亮；真正的拒绝仍然发生在服务端。
+    // 界面据此决定"开跑"按钮亮不亮；真正的拒绝仍然发生在服务端。
     allReady: pending.length === 0,
     pending: pending.map(m => m.name),
     results: state.results,

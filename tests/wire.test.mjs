@@ -1,125 +1,70 @@
 /**
- * 线格式：地图、快照、以及"看不见的敌人不进快照"这条反作弊边界。
- *
- * 这些断言的价值在于它们**不需要浏览器也不需要 workerd**：线格式是纯数据变换，
- * 出了问题一定是这一层的错，不用在别处找。
+ * 线格式。三条必须守住的：
+ *   1. **发规则不发结果**：地图只发种子，客户端的 `createTrack()` 自己算出同一条路；
+ *   2. **时间戳的精度要够**：`tm` 少一位小数就会让画面每 100ms 顿一下；
+ *   3. **报文要小**：20Hz 的广播，一条 6KB 的报文就是 120KB/s 一个客户端。
  */
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { GRID, TILE, WORLD } from "../sim/constants.mjs";
-import { createWorld, startMatch, fillRoster } from "../sim/world.mjs";
-import { encodeMap, decodeMap, encodeSnapshot, decodeBullet } from "../sim/wire.mjs";
+import { build, run, seconds } from "./helpers.mjs";
+import { decodeMap, decodeRacer, decodeTraffic, encodeMap, encodeSnapshot } from "../sim/wire.mjs";
+import { createTrack } from "../sim/track.mjs";
 
-function world(mode = "control", bots = 4) {
-  const w = createWorld({ tenant: "neon", roomId: "T1", mode, difficulty: 1, seed: 4242 });
-  const roster = fillRoster(w, [
-    { kind: "human", ownerId: "g_1", name: "我", type: 0, gadget: "heal" },
-  ], bots);
-  startMatch(w, roster, 4242);
-  return w;
-}
-
-test("地图编码是可读的紧凑格式，解码能重建出同样的墙与草丛", () => {
-  const w = world();
+test("地图：发的是种子和模式，解码后能重建出同一条路", () => {
+  const w = run(build({ seed: 31337, mode: "wild" }), 1);
   const msg = encodeMap(w);
-  assert.equal(typeof msg.grid, "string");
-  assert.equal(msg.grid.length, GRID * GRID);
-  assert.ok(!/[^0-3]/u.test(msg.grid), "网格里只有四种格子");
+  assert.equal(msg.t, "map");
+  assert.equal(msg.seed, 31337);
+  assert.equal(msg.mode, "wild");
+  assert.equal(msg.roster.length, w.racers.length);
 
-  const map = decodeMap(msg);
-  const walls = msg.grid.split("").filter(ch => ch === "1").length;
-  const bushes = msg.grid.split("").filter(ch => ch === "3").length;
-  assert.equal(map.walls.length, walls);
-  assert.equal(map.bushes.length, bushes);
-  assert.equal(map.seed, 4242);
-  assert.equal(map.mode, "control");
-  assert.ok(map.boxes.every(b => b.alive && b.maxHp > 0));
+  const map = decodeMap(JSON.parse(JSON.stringify(msg)));
+  const rebuilt = createTrack({ seed: map.seed, mode: map.mode });
+  assert.equal(rebuilt.length, w.track.length);
+  assert.equal(rebuilt.lanes, w.track.lanes);
+  for (let z = 0; z < 500; z += 11) assert.equal(rebuilt.curveAt(z), w.track.curveAt(z));
+  assert.ok(JSON.stringify(msg).length < 2000, "地图报文应该只有一两 KB");
 });
 
-test("快照能过 JSON，并且我自己的实体带上了只属于我的字段", () => {
-  const w = world();
-  const me = w.actors.find(a => a.kind === "human");
-  const snap = encodeSnapshot(w, me.id);
-  const parsed = JSON.parse(JSON.stringify(snap));
-  assert.equal(parsed.t, "s");
-  assert.equal(parsed.ph, "live");
-
-  const wireMe = parsed.a.find(a => a.i === me.id);
-  assert.ok(wireMe, "我自己必须在快照里");
-  for (const key of ["am", "su", "gd", "dd", "ov", "dc", "co", "cp", "lv", "xp", "nx", "pk", "of"]) {
-    assert.ok(key in wireMe, `缺字段 ${key}`);
-  }
-  assert.equal(wireMe.gd, "heal", "开局带的装置跟着人走");
-
-  const enemy = parsed.a.find(a => a.i !== me.id);
-  assert.ok(enemy && !("su" in enemy), "别人的弹药与大招不该发给我");
-  assert.ok(Array.isArray(parsed.b) && Array.isArray(parsed.gr) && parsed.z && parsed.rg);
+test("快照：自己的记录带权威确认点，别人的不带", () => {
+  const w = build({ seed: 5, bots: 13, humans: [{ ownerId: "g1", name: "柠檬叔" }] });
+  run(w, seconds(6));
+  const mine = w.racers.find(r => r.ownerId === "g1");
+  const snap = encodeSnapshot(w, mine.id, 123456);
+  const self = snap.r.find(r => r.i === mine.id);
+  assert.ok(self, "自己一定在快照里");
+  assert.equal(typeof self.ak, "number");
+  assert.equal(typeof self.az, "number");
+  assert.equal(typeof self.ax, "number");
+  assert.ok(snap.r.filter(r => r.i !== mine.id).every(r => r.ak === undefined), "别人的 ack 不该发");
+  assert.equal(snap.wt, 123456);
 });
 
-/**
- * 快照的 `tm` 必须带**毫秒精度**，不能只到 100ms。
- *
- * 客户端拿相邻两帧的 `tm` 做插值，快照又每 50ms 来一张。`tm` 一粗糙，"两张快照
- * 的 tm 相同"和"两张差 100ms"就会轮流出现：插值规则跳过前一对、又从后一对一次性
- * 补回来，画面上就是每 100ms 顿一下（"机器人像幻灯片"）。这条测试钉的就是这个。
- */
-test("快照的世界时间带毫秒精度，够插值用", () => {
-  const w = world();
-  w.time = 6.9;      // 一位小数：老实现里 6.94 和 6.9 会变成同一个数
-  const a = encodeSnapshot(w, 0).tm;
-  w.time = 6.94;
-  const b = encodeSnapshot(w, 0).tm;
-  assert.notEqual(a, b, "两帧相差 40ms 就必须能从 tm 上看出来");
-  assert.equal(a, 6.9);
-  assert.equal(b, 6.94);
+test("世界时间带毫秒精度（少一位小数就会让画面每 100ms 顿一下）", () => {
+  const w = run(build({ seed: 6 }), 7);
+  const snap = encodeSnapshot(w, 0);
+  assert.equal(snap.tm, Math.round(w.time * 1000) / 1000);
+  assert.ok(String(snap.tm).split(".")[1] !== undefined, "tm 必须带小数");
 });
 
-test("躲在草丛里的敌人根本不会出现在我的快照里，点亮之后才出现", () => {
-  const w = world();
-  const me = w.actors.find(a => a.kind === "human");
-  const enemy = w.actors.find(a => a.id !== me.id && a.team !== me.team);
-  me.x = TILE + 60; me.y = TILE + 60;
-
-  const bush = [...w.bushes].sort((a, b) =>
-    Math.hypot(b.x - me.x, b.y - me.y) - Math.hypot(a.x - me.x, a.y - me.y))[0];
-  assert.ok(bush, "地图里应该有草丛");
-  enemy.x = bush.x + TILE / 2;
-  enemy.y = bush.y + TILE / 2;
-  assert.ok(Math.hypot(enemy.x - me.x, enemy.y - me.y) > 145);
-
-  enemy.revealed = 0;
-  assert.equal(encodeSnapshot(w, me.id).a.some(a => a.i === enemy.id), false);
-  enemy.revealed = 2;
-  assert.equal(encodeSnapshot(w, me.id).a.some(a => a.i === enemy.id), true);
+test("快照能被 JSON 序列化，且大小在预算内", () => {
+  const w = build({ seed: 8, bots: 14, humans: [{ ownerId: "g1", name: "柠檬叔" }] });
+  run(w, seconds(45));
+  const text = JSON.stringify(encodeSnapshot(w, w.racers[0].id, Date.now()));
+  assert.ok(text.length > 500, "报文不能是空的");
+  assert.ok(text.length < 9000, `快照 ${text.length} 字节，超预算了`);
 });
 
-test("死掉的敌人不进快照，死掉的我自己还在（要能看见复活倒计时）", () => {
-  const w = world();
-  const me = w.actors.find(a => a.kind === "human");
-  const enemy = w.actors.find(a => a.id !== me.id);
-  enemy.alive = false;
-  let snap = encodeSnapshot(w, me.id);
-  assert.equal(snap.a.some(a => a.i === enemy.id), false);
-
-  me.alive = false; me.respawn = 2.5;
-  snap = encodeSnapshot(w, me.id);
-  const wireMe = snap.a.find(a => a.i === me.id);
-  assert.ok(wireMe);
-  assert.equal(wireMe.al, 0);
-  assert.equal(wireMe.rs, 2.5);
-});
-
-test("子弹解码带回队伍，渲染层才能分清敌我弹道", () => {
-  const w = world();
-  w.bullets.push({
-    id: 99, x: 100, y: 200, px: 100, py: 200, vx: 800, vy: 0, damage: 10,
-    remaining: 500, ownerId: 1, team: 1, superShot: false, pierce: false,
-    r: 5, hit: [], alive: true, crit: false, bounces: 0, hero: 2,
-  });
-  const bullet = decodeBullet(encodeSnapshot(w, w.actors[0].id).b[0]);
-  assert.equal(bullet.team, 1);
-  assert.equal(bullet.hero, 2);
-  assert.equal(bullet.superShot, false);
-  assert.ok(WORLD > 0 && TILE > 0);
+test("车手与车流都能还原成渲染层好用的对象", () => {
+  const w = run(build({ seed: 9 }), seconds(20));
+  const snap = encodeSnapshot(w, 0);
+  const roster = decodeMap(encodeMap(w)).roster;
+  const r = decodeRacer(snap.r[0], roster);
+  assert.equal(r.state, "ride");
+  assert.ok(r.name.length > 0, "名字要从名册里补回来");
+  assert.ok(r.kmh > 0);
+  assert.ok(snap.tr.length > 0, "路上应该有车");
+  const v = decodeTraffic(snap.tr[0]);
+  assert.ok(v.kind && v.z > 0 && (v.dir === 1 || v.dir === -1));
 });

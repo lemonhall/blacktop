@@ -1,264 +1,124 @@
 /**
- * 开、进、退：名册 → 场上实体，以及中途进出的人怎么落位。
+ * 名册 → 场上：开局、半路加入、踢人、掉线。
  *
- * 这一层是"房间"和"世界"之间的缝，最容易被改坏却最难在浏览器里复现，
- * 所以它的每一条行为都在这里钉一遍。
+ * 半路加入是这一版新加的（房主可以关掉）。它的难点不在"加进去"，而在**加在哪儿**：
+ * 扔在起点等于让他在三公里外独自骑，扔在领跑者前面等于空降抢第一。所以这里
+ * 对落位有一条明确断言。
  */
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createRoomState, addMember, setTeam, setReady } from "../src/room-state.mjs";
+import { addMember, createRoomState, rosterOf, setReady } from "../src/room-state.mjs";
 import {
-  beginMatch, resetMatch, joinLive, dropPlayer, actorIdOf, advanceWorld, beatGrid, ejectFromWorld,
+  actorIdOf, beginMatch, dropPlayer, ejectFromWorld, joinLive, resetMatch,
 } from "../src/room-match.mjs";
-import { MAX_CATCHUP_TICKS } from "../sim/constants.mjs";
-import { pushCmd } from "../sim/netcode.mjs";
+import { advanceWorld } from "../src/room-clock.mjs";
+import { MAX_RACERS } from "../sim/data.mjs";
+import { run, seconds } from "./helpers.mjs";
 
-function staging(bots = 4, mode = "control") {
-  const state = createRoomState({ tenant: "neon", roomId: "R1", name: "房", mode, bots, hostId: "g_1", hostName: "A" });
-  addMember(state, { playerId: "g_1", name: "A", hero: 0, gadget: "grenade" });
-  addMember(state, { playerId: "g_2", name: "B", hero: 2, gadget: "heal" });
-  return state;
+function staged(bots = 13, humans = ["p1"]) {
+  const s = createRoomState({
+    tenant: "demo", roomId: "R1", name: "夜路", mode: "city", bots,
+    hostId: humans[0], hostName: "柠檬叔", maxHumans: 2, maxBots: 13,
+  });
+  humans.forEach((id, i) => addMember(s, { playerId: id, name: i ? "老二" : "柠檬叔", bike: i }));
+  return s;
 }
 
-test("开局把名册变成场上的实体，两人分到对立两队", () => {
-  const state = staging();
-  const { world, mapMsg } = beginMatch(state, 1000);
-  assert.equal(state.phase, "live");
-  assert.equal(state.startedAt, 1000);
-  assert.ok(state.lastSeed > 0);
+test("开跑：名册变成 15 台车，真人排在发车格最前面", () => {
+  const s = staged(13, ["p1", "p2"]);
+  setReady(s, "p2", true);
+  const { world, mapMsg } = beginMatch(s, 5000);
+  assert.equal(s.phase, "live");
+  assert.equal(world.racers.length, MAX_RACERS);
+  assert.equal(world.racers.filter(r => r.kind === "human").length, 2);
+  assert.equal(world.racers[0].ownerId, "p1");
+  assert.ok(world.racers[0].z > world.racers[10].z, "真人应该比最后一排靠前");
   assert.equal(mapMsg.t, "map");
-  assert.equal(world.actors.length, 6, "2 个真人 + 4 个机器人");
-
-  const humans = world.actors.filter(a => a.kind === "human");
-  assert.equal(humans.length, 2);
-  assert.notEqual(humans[0].team, humans[1].team, "两个真人一定能对上枪");
-  const b = humans.find(a => a.ownerId === "g_2");
-  assert.equal(b.type, 2);
-  assert.equal(b.gadget, "heal", "选的装置跟着人进场");
+  assert.equal(mapMsg.roster.length, MAX_RACERS);
+  assert.ok(s.lastSeed > 0, "种子要记下来，战绩入库与复盘都靠它");
 });
 
-test("对局中有人进来：直接补一个实体，队伍往人少的一边放", () => {
-  const state = staging(2);
-  const { world } = beginMatch(state);
-  addMember(state, { playerId: "g_3", name: "C", hero: 1 });
-  const member = state.members.find(m => m.playerId === "g_3");
-  const actor = joinLive(world, member);
-  assert.ok(actor);
-  assert.equal(actor.ownerId, "g_3");
-  assert.equal(joinLive(world, member), null, "同一个人不会补两个实体");
-
-  const counts = [0, 0];
-  for (const a of world.actors) if (a.kind === "human") counts[a.team]++;
-  assert.equal(Math.abs(counts[0] - counts[1]), 1);
-});
-
-test("中途加入的真人占掉机器人的名额，3v3 不会变成 4v3", () => {
-  // 满员开局：2 个真人 + 4 个机器人 = 6 个位置，正好是 3v3。
-  const state = staging(4);
-  const { world } = beginMatch(state);
-  assert.equal(world.actors.length, 6);
-
-  addMember(state, { playerId: "g_3", name: "C", hero: 1 });
-  const member = state.members.find(m => m.playerId === "g_3");
-  const actor = joinLive(world, member);
-  assert.ok(actor, "人进来了");
-  assert.equal(world.actors.length, 6, "总人数不变：机器人让位");
-  assert.equal(world.actors.filter(a => a.kind === "bot").length, 3, "少了一个机器人");
-
-  const counts = [0, 0];
-  for (const a of world.actors) counts[a.team]++;
-  assert.deepEqual(counts, [3, 3], "还是 3v3");
-});
-
-test("掉线只清掉还没消化的输入命令，人不从场上消失", () => {
-  const state = staging(2);
-  const { world } = beginMatch(state);
-  const actor = world.actors.find(a => a.ownerId === "g_1");
-  pushCmd(actor, { sq: 1, mx: 1, my: 0, a: 0, f: 0, act: 0, r: 310, n: 4 }, 1000);
-  assert.equal(actor.queued, 4, "命令入队");
-  const id = actorIdOf(world, "g_1");
-  dropPlayer(world, "g_1");
-  assert.equal(actor.queued, 0, "人走了，欠下的那几格就不该再走");
-  assert.equal(actor.cmds.length, 0);
-  assert.ok(world.actors.some(a => a.ownerId === "g_1"), "实体还在原地挨打");
-  assert.equal(actorIdOf(world, "不存在"), 0);
-});
-
-test("补算：跨境链路上常见的一秒级断流不该再丢时间", () => {
-  const state = staging(2);
-  const { world } = beginMatch(state);
-  const step = 1000 / 60;
-  // 1.5 秒没有任何消息到达（现实里就是一次 TCP 重传或者一次拥塞窗口）。
-  const now = 1_000_000 + step * 90 + .5;
-  assert.equal(advanceWorld(world, 1_000_000, now, MAX_CATCHUP_TICKS), now);
-  assert.equal(world.tick, 90, "90 步全补上，一格不丢");
-  // 那半毫秒的零头没被扔掉，它记账在 stepCarry 里，下一次补算会补上。
-  assert.ok(world.stepCarry > 0 && world.stepCarry < step, "不足一格的零头记账，不丢时间");
-});
-
-test("重开一局：回到候场，场上清空", () => {
-  const state = staging();
-  const { world } = beginMatch(state);
-  state.phase = "over";
-  resetMatch(state, world);
-  assert.equal(state.phase, "staging");
-  assert.equal(state.results, null);
-  assert.equal(world.actors.length, 0);
-});
-
-test("补算：超预算时削掉这一次的欠账，绝不让世界滚雪球", () => {
-  const state = staging(4);
-  const { world } = beginMatch(state);
-  const step = 1000 / 60;
-  let base = 1_000_000;
-  // 喂给它一个"差半毫秒不到整格"的时刻——真实时钟就是这样抖的。
-  // 推进的记账基准是墙上时间，所以返回值就是喂进去的那个时刻本身。
-  const early = base + step * 10 + .5;
-  assert.equal(advanceWorld(world, base, early, 30), early);
-  base = early;
-  assert.equal(world.tick, 10);
-
-  const before = world.tick;
-  const now = base + step * 5000;
-  const next = advanceWorld(world, base, now, 30);
-  assert.equal(world.tick - before, 30, "最多补 30 步");
-  assert.equal(next, now, "推进的记账基准永远是墙上时间");
-  assert.equal(advanceWorld(world, next, next), next, "时间没走就不推进");
-});
-
-/**
- * "幻灯片"那个 bug 的出生地就在这条测试里。
- *
- * 世界是**按消息到达驱动**的，消息的间隔永远不会正好是 16.67ms。老实现每次只走
- * `floor(经过时间 / 16.67)` 步、把零头扔掉，于是世界的平均速度比真实时间慢一大截；
- * 客户端的渲染头按真实时间走，就会一会儿追过数据（只能冻住等）、一会儿被新快照
- * 拽回去——画面上就是幻灯片。
- *
- * 所以这里喂一串**故意恶心**的间隔（不整除、还带抖动），要求世界的累计时间必须
- * 跟上墙上时间；同时要求任何一次补算都守得住 `maxTicks`，不会把 CPU 打满。
- */
-test("补算：把不整格的零头记账，世界的平均速度和墙上时间一致", () => {
-  const state = staging(0);
-  const { world } = beginMatch(state);
-  const step = 1000 / 60;
-  let now = 5_000_000;
-  const start = now;
-  // 25Hz 上行的真实形状：间隔 37~43ms，还夹两次 300ms 的卡顿。
-  const gaps = [41, 39, 40, 300, 37, 43, 38, 42, 300, 40];
-  for (let round = 0; round < 12; round++) {
-    for (const gap of gaps) {
-      now += gap;
-      advanceWorld(world, now - gap, now, MAX_CATCHUP_TICKS);
-    }
+test("机器人按技能从高到低往后排（老兵从后面追上来才好看）", () => {
+  const s = staged(13, ["p1"]);
+  const { world } = beginMatch(s, 1);
+  const bots = world.racers.filter(r => r.kind === "bot");
+  for (let i = 1; i < bots.length; i++) {
+    assert.ok(bots[i].z <= bots[i - 1].z + 1e-9, "机器人没有按技能顺序发车");
   }
-  const wallSeconds = (now - start) / 1000;
-  // 记账天然是离散的：世界时间最多落后一格（攒在 stepCarry 里的零头），
-  // 但绝不允许"慢了百分之十几"这种系统性丢失——那正是幻灯片感的来源。
-  const lagMs = (wallSeconds - world.time) * 1000;
-  assert.ok(lagMs >= -0.01 && lagMs < step * 1.5,
-    `世界时间 ${world.time.toFixed(3)}s 比墙上时间 ${wallSeconds.toFixed(3)}s 慢了 ${lagMs.toFixed(1)}ms`);
 });
 
-/**
- * 节拍网格（`beatGrid`）——第二把"幻灯片"的钥匙。
- *
- * 世界推进的时刻必须取**网格上该到的时刻**，不能取计时器实际醒来的时刻。workerd 的
- * `setTimeout(50)` 实测平均 62ms 才醒；拿实际时刻推进，世界就比广播快 1.2 倍，客户端
- * 的插值头只能一路追赶。这里把那段算术钉死：不管计时器晚多少，世界都按 50ms 的整数格
- * 走，而且**永远不会被排在"未来"**（那会让世界跑到墙上时间前面去）。
- */
-test("节拍网格：计时器晚醒不改世界的步伐，长停只丢快照不丢时间", () => {
-  const first = beatGrid({ now: 1_000_000, nextBcastMs: 0 });
-  assert.deepEqual(first, { target: 1_000_000, next: 1_000_050, skipped: 0, started: true });
-  assert.equal(beatGrid({ now: 1_000_020, nextBcastMs: first.next }), null, "没到点就该什么都不做");
+test("半路加入：落在领跑者身后 45 米，带着全场的平均速度", () => {
+  const s = staged(13, ["p1"]);
+  const { world } = beginMatch(s, 1);
+  run(world, seconds(20));
+  setReady(s, "p2", true);
+  addMember(s, { playerId: "p2", name: "老二", bike: 2 });
+  const racer = joinLive(world, s.members[1]);
+  assert.ok(racer, "比赛进行中应该能进场");
+  const lead = Math.max(...world.racers.filter(r => r !== racer).map(r => r.z));
+  assert.ok(Math.abs(racer.z - (lead - 45)) < 1e-6, `落点是 ${racer.z - lead} 米，不是 -45`);
+  assert.ok(racer.v > 10, "一进来就得以路速跑起来，否则立刻被套圈");
+  assert.equal(racer.kind, "human");
+  assert.equal(racer.bike, 2, "他选的车要带上场");
+  assert.equal(joinLive(world, s.members[1]), null, "同一个不该被放进来两次");
+});
 
-  // 计时器晚了 12ms 才醒：世界仍然只推进到网格上的那一格。
-  const late = beatGrid({ now: 1_000_062, nextBcastMs: first.next });
-  assert.equal(late.target, 1_000_050);
-  assert.equal(late.next, 1_000_100);
-  assert.equal(late.skipped, 0);
+test("场上满了就让机器人让位，而且让的是最落后的那台", () => {
+  // 正常配置下真人上限是 2，所以"没位置"这件事只可能出现在**
+  // 真人已经满编、机器人也拉满**的时候：2 + 13 = 15 = MAX_RACERS。
+  // 这条守的是"上限"这个概念本身——一个房间里永远不会出现第十六台车。
+  const s = staged(14, ["p1", "p2"]);
+  const { world } = beginMatch(s, 1);
+  assert.equal(world.racers.length, MAX_RACERS);
+  world.racers.forEach((r, i) => { r.z = 100 + i * 10; });
+  const lastBot = world.racers.filter(r => r.kind === "bot").sort((a, b) => a.z - b.z)[0];
+  joinLive(world, { playerId: "p3", name: "插队的", bike: 0 });
+  assert.equal(world.racers.length, MAX_RACERS, "总数不变：真人进来要顶掉一个机器人");
+  assert.ok(!world.racers.includes(lastBot), "被顶掉的应该是落后最多的那个机器人");
+  assert.equal(world.racers.filter(r => r.kind === "human").length, 3);
+});
 
-  // 连续 20 拍都晚 12ms 醒：世界的时刻永远落在网格上（原点 + N×50ms），
-  // 永远不超前于墙上时间，而且最多只落后一格——攒够一格就把整格跳过去（skipped）。
-  let nextBcastMs = first.next, now = 1_000_000;
-  for (let i = 0; i < 20; i++) {
-    now += 62;
-    const grid = beatGrid({ now, nextBcastMs });
-    nextBcastMs = grid.next;
-    assert.equal((grid.target - first.target) % 50, 0, "世界时刻永远落在 50ms 的网格上");
-    assert.ok(grid.target <= now, "世界永远不推进到未来");
-    assert.ok(now - grid.target < 50, "最多落后一格：攒够了就跳过去，不欠账");
+test("踢人：把人从场上彻底拿走；掉线：车留在原地，只是清空输入", () => {
+  const s = staged(13, ["p1", "p2"]);
+  setReady(s, "p2", true);
+  const { world } = beginMatch(s, 1);
+  run(world, seconds(8));
+  const racer = world.racers.find(r => r.ownerId === "p2");
+  racer.cmds.push({ sq: 1, th: 1, br: 0, st: 0, act: 0, nos: 0, n: 5 });
+  racer.queued = 5;
+  dropPlayer(world, "p2");
+  assert.equal(racer.queued, 0, "掉线要清空输入时间线");
+  assert.ok(world.racers.includes(racer), "掉线的车要留在路上（重连接着骑）");
+  assert.equal(actorIdOf(world, "p2"), racer.id);
+  assert.equal(ejectFromWorld(world, "p2"), true);
+  assert.ok(!world.racers.includes(racer), "被踢的人是连车带人一起请走");
+  assert.equal(ejectFromWorld(world, "p2"), false);
+});
+
+test("再来一局：回到候场、举手作废、场上清空", () => {
+  const s = staged(13, ["p1", "p2"]);
+  setReady(s, "p2", true);
+  const { world } = beginMatch(s, 1);
+  s.phase = "over";
+  s.results = { players: [] };
+  resetMatch(s, world);
+  assert.equal(s.phase, "staging");
+  assert.equal(s.results, null);
+  assert.equal(world.racers.length, 0);
+  assert.equal(s.members.every(m => !m.ready), true, "下一局要重新举手");
+  assert.equal(rosterOf(s).length, 2);
+});
+
+test("世界快进：墙上时间流逝多少，世界就推进多少（零头记账，不丢时间）", () => {
+  const s = staged(13, ["p1"]);
+  const { world } = beginMatch(s, 1);
+  let last = 1_000_000;
+  // 模拟"消息每 43ms 来一条"的不整除节拍：这是真实链路上的样子。
+  for (let i = 0; i < 200; i++) {
+    last += 43;
+    advanceWorld(world, last - 43, last, 240);
   }
-  assert.equal(now - nextBcastMs < 50, true, "网格自己不能漂");
-
-  // DO 被冻了 900ms：一次补上时间，但只发一张快照（skipped 记下跳过了几格）。
-  const stall = beatGrid({ now: nextBcastMs + 900, nextBcastMs });
-  assert.equal(stall.skipped, 18);
-  assert.equal(stall.target, nextBcastMs + 900 - ((nextBcastMs + 900 - nextBcastMs) % 50));
-  assert.equal(stall.next - stall.target, 50);
-});
-
-test("真人自己选的边说了算；两个人想在同一队就同一队", () => {
-  const state = staging(2);
-  setTeam(state, "g_1", 1);
-  setTeam(state, "g_2", 1);
-  const { world } = beginMatch(state);
-  const humans = world.actors.filter(a => a.kind === "human");
-  assert.equal(humans.length, 2);
-  assert.equal(humans[0].team, 1);
-  assert.equal(humans[1].team, 1, "想和朋友一队是合理的，不再强制拆开");
-});
-
-test("一边选满了，后面的人自动落回人少的那一边", () => {
-  const state = createRoomState({
-    tenant: "neon", roomId: "R2", name: "房", mode: "control", bots: 0,
-    hostId: "g_0", hostName: "H",
-  });
-  for (let i = 0; i < 5; i++) {
-    addMember(state, { playerId: `g_${i}`, name: `P${i}` });
-    if (i < 4) setTeam(state, `g_${i}`, 0);
-  }
-  assert.equal(setTeam(state, "g_4", 0), false, "蓝队已经满了，选不进去");
-  const { world } = beginMatch(state);
-  const counts = [0, 0];
-  for (const a of world.actors) counts[a.team]++;
-  assert.equal(counts[1] >= 1, true, "自动补位会填到另一队去");
-  assert.equal(counts[0] <= 3, true, "蓝队不会超过三个人");
-});
-
-test("对局开打之后就不能再换边了（选边是候场阶段的事）", () => {
-  const state = staging(2);
-  const { world } = beginMatch(state);
-  assert.equal(setTeam(state, "g_1", 1), false, "打起来了还想换边，服务端不认");
-  assert.equal(world.actors.find(a => a.ownerId === "g_1").team, 0, "场上的队形不变");
-});
-
-test("中途进来的人由服务端按人少的一边补位", () => {
-  const state = staging(2);
-  const { world } = beginMatch(state);
-  addMember(state, { playerId: "g_3", name: "C", hero: 1 });
-  const member = state.members.find(m => m.playerId === "g_3");
-  const actor = joinLive(world, member);
-  const counts = [0, 0];
-  for (const a of world.actors) if (a.kind === "human") counts[a.team]++;
-  assert.equal(Math.abs(counts[0] - counts[1]) <= 1, true, "补位总是补到人少的一边");
-  assert.ok(actor.team === 0 || actor.team === 1);
-});
-
-test("踢人要连实体一起清走，而不是留个不动的角色在那挨打", () => {
-  const state = staging(2);
-  const { world } = beginMatch(state);
-  assert.equal(ejectFromWorld(world, "g_1"), true);
-  assert.equal(world.actors.some(a => a.ownerId === "g_1"), false, "被踢的人不留尸体");
-  assert.equal(ejectFromWorld(world, "g_none"), false);
-});
-
-test("重开一局要重新举手，上一局的 ready 不顺延", () => {
-  const state = staging(2);
-  setReady(state, "g_2", true);
-  const { world } = beginMatch(state);
-  resetMatch(state, world);
-  assert.equal(state.phase, "staging");
-  assert.equal(state.members.every(m => !m.ready), true);
+  const expected = 200 * 43 / 1000;
+  assert.ok(Math.abs(world.time - expected) < 0.02, `世界走了 ${world.time.toFixed(3)} 秒，墙上过了 ${expected}`);
 });

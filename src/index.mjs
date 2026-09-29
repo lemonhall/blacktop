@@ -3,13 +3,14 @@
  *
  * 这里只做四件事：认租户、认凭据、把请求路由到对的 DO、给浏览器补 CORS。
  * 有意不在这里做任何游戏判定——Worker 是无状态、可被复制到任何边缘节点的，
- * 把"谁赢了"这种判断放在这里，等于让它有多个互相看不见的副本。
+ * 把"谁先冲线"这种判断放在这里，等于让它有多个互相看不见的副本。
  */
 
 import { createRouter } from "./router.mjs";
-import { getTenant, listTenants, createTenant, isServerKey, ensureSchema } from "./tenants.mjs";
-import { signToken, verifyToken, bearerOf, randomKey } from "./auth.mjs";
-import { recentMatches, leaderboard } from "./results.mjs";
+import { createTenant, ensureSchema, getTenant, isServerKey, listTenants } from "./tenants.mjs";
+import { bearerOf, randomKey, signToken, verifyToken } from "./auth.mjs";
+import { leaderboard, recentMatches } from "./results.mjs";
+import { BIKES, DIFFICULTIES, MAX_RACERS, MODES } from "../sim/data.mjs";
 
 export { Room } from "./room.mjs";
 export { Lobby } from "./lobby.mjs";
@@ -18,7 +19,21 @@ const router = createRouter();
 const tenantCache = new Map();
 let schemaReady = null;
 
-router.get("/v1/health", () => json({ ok: true, service: "fray", now: Date.now() }));
+router.get("/v1/health", () => json({ ok: true, service: "blacktop", now: Date.now() }));
+
+/**
+ * 赛制与车型。这张表是**唯一真相**：前端的选择器从它渲染，后端建房时也用它校验。
+ * 两边各写一份常量是这类项目最常见的一种腐烂，第一天看不出来，第一次改平衡就翻车。
+ */
+router.get("/v1/meta", () => json({
+  modes: Object.values(MODES).map(m => ({
+    id: m.id, name: m.name, sub: m.sub, desc: m.desc,
+    lanes: m.lanes, length: m.length, maxHumans: m.maxHumans, bots: m.bots,
+  })),
+  bikes: BIKES.map(b => ({ id: b.id, name: b.name, en: b.en, note: b.note, vmax: b.vmax })),
+  difficulties: DIFFICULTIES,
+  maxRacers: MAX_RACERS,
+}));
 
 router.get("/v1/tenants", async ({ env }) => {
   await ready(env);
@@ -44,7 +59,7 @@ router.post("/v1/:tenant/guest", async ({ request, env, params }) => {
   if (!tenant.rules.allowGuestSessions) return json({ error: "guest_disabled" }, 403);
   const body = await bodyOf(request);
   const playerId = `g_${randomKey(9)}`;
-  const name = String(body.name || "游客").slice(0, 16);
+  const name = String(body.name || "车手").slice(0, 16);
   const token = await signToken(secretOf(env), { tenantId: tenant.id, playerId, name });
   return json({ playerId, name, token, tenant: tenant.id });
 });
@@ -59,7 +74,9 @@ router.post("/v1/:tenant/sessions", async ({ request, env, params }) => {
   const body = await bodyOf(request);
   if (!body.playerId) return json({ error: "playerId_required" }, 400);
   const token = await signToken(secretOf(env), {
-    tenantId: tenant.id, playerId: String(body.playerId).slice(0, 64), name: String(body.name || body.playerId).slice(0, 16),
+    tenantId: tenant.id,
+    playerId: String(body.playerId).slice(0, 64),
+    name: String(body.name || body.playerId).slice(0, 16),
   });
   return json({ playerId: body.playerId, token });
 });
@@ -182,11 +199,12 @@ function roomConfig(tenant, body, session) {
   return {
     tenant: tenant.id,
     name: String(body.name || `${session.name} 的房间`).slice(0, 24),
-    mode: body.mode === "survival" ? "survival" : "control",
+    // 模式白名单：不在表里的一律落到 city。**不做"猜"**——猜错赛道比拒绝更糟。
+    mode: MODES[body.mode] ? body.mode : "city",
     difficulty: Number(body.difficulty) || 0,
-    bots: Math.max(0, Math.min(rules.maxBotsPerRoom, Number(body.bots) ?? 4)),
+    bots: Math.max(0, Math.min(rules.maxBotsPerRoom, Number(body.bots) ?? 13)),
     // 建房表单里的"允许中途加入"。缺省为开——这就是改版前的行为，不能让老客户端
-    // 因为少传一个字段就忽然进不去正在打的房间。
+    // 因为少传一个字段就忽然进不去正在跑的房间。
     joinLive: body.joinLive !== false,
     hostId: session.playerId,
     hostName: session.name,

@@ -1,18 +1,20 @@
 /**
  * 战绩落库与排行榜（D1）。
  *
- * 一场打完写一行，`stats` 里存每个参战者的 JSON 数组。排行榜直接在这份 JSON 上
- * 用 SQLite 的 json_each 聚合——不额外建一张明细表，是因为"一场比赛的参战者"
+ * 一场跑完写一行，`stats` 里存每个参赛者的 JSON 数组。排行榜直接在这份 JSON 上
+ * 用 SQLite 的 json_each 聚合——不额外建一张明细表，是因为"一场比赛的参赛者"
  * 本来就只在这一个场景里被读，为它做范式化只会多一次 JOIN 和一份同步负担。
+ *
+ * 赛车的"赢"和射击不一样：这里**没有队**，赢家就是第一个冲线的那个人，
+ * 所以 `winner` 存 `player:<ownerId>`，排行榜再按名次聚合胜场。
  */
 
 export async function recordMatch(env, state, world) {
   const results = state.results;
   if (!results) return null;
   const id = `${state.tenant}:${state.roomId}:${state.startedAt}`;
-  const winner = results.kind === "control"
-    ? `team:${results.winnerTeam}`
-    : `player:${(results.players.find(p => p.rank === 1) || {}).ownerId || ""}`;
+  const first = results.players.find(p => p.rank === 1) || {};
+  const winner = `player:${first.ownerId || ""}`;
   await env.DB.prepare(
     `INSERT OR REPLACE INTO matches
        (id, tenant_id, room_id, mode, seed, started_at, ended_at, duration_ms, winner, stats)
@@ -37,22 +39,29 @@ export async function recentMatches(env, tenantId, limit = 12) {
   }));
 }
 
-/** 只统计人类玩家：机器人上榜会把榜单一夜之间刷成机器人名字。 */
+/**
+ * 排行榜：**只统计人类**。
+ *
+ * 机器人上榜会把榜单一夜之间刷成机器人名字，那这榜单就没意义了。排序按
+ * "胜场 → 撂倒 → 赏金"：赢是本事，打是态度，钱是这两者的结果。
+ */
 export async function leaderboard(env, tenantId, limit = 20) {
   const { results } = await env.DB.prepare(
     `SELECT json_extract(j.value, '$.ownerId') AS playerId,
             json_extract(j.value, '$.name')    AS name,
             COUNT(*)                           AS games,
-            SUM(json_extract(j.value, '$.kills'))   AS kills,
-            SUM(json_extract(j.value, '$.deaths'))  AS deaths,
-            SUM(json_extract(j.value, '$.reward'))  AS xp,
+            SUM(json_extract(j.value, '$.downs'))   AS downs,
+            SUM(json_extract(j.value, '$.dayuns'))  AS dayuns,
+            SUM(json_extract(j.value, '$.crashes')) AS crashes,
+            SUM(json_extract(j.value, '$.cash'))    AS cash,
+            MIN(json_extract(j.value, '$.rank'))    AS bestRank,
             SUM(CASE WHEN json_extract(j.value, '$.rank') = 1 THEN 1 ELSE 0 END) AS wins
        FROM matches, json_each(matches.stats) j
       WHERE matches.tenant_id = ?
         AND json_extract(j.value, '$.kind') = 'human'
         AND json_extract(j.value, '$.ownerId') NOT LIKE 'bot:%'
       GROUP BY playerId
-      ORDER BY kills DESC, wins DESC
+      ORDER BY wins DESC, downs DESC, cash DESC
       LIMIT ?`,
   ).bind(tenantId, limit).all();
   return results || [];

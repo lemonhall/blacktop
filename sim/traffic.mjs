@@ -26,7 +26,14 @@ export const VEHICLES = {
 /** 能被踢飞的只有它。别的车撞上去就是一记摔车——这是这个梗的分量所在。 */
 export const kickable = kind => kind === "dayun";
 
-const MAX_TRAFFIC = 26;
+/**
+ * 同屏车流上限。
+ *
+ * 这个数是被**撞车率**反推出来的：一台车在视野里活多久，约等于"窗口长度 ÷
+ * 相对速度"。对向车相对速度是 70 m/s 量级，850 米的窗口只留得住十几秒，
+ * 所以上限给 8 台就足够让路上一直有东西，又不会让 15 台摩托挤成碰碰车。
+ */
+const MAX_TRAFFIC = 9;
 const BEHIND_CULL = 70;
 const AHEAD_CULL = 780;
 
@@ -50,14 +57,16 @@ export function spawnTraffic(w, leadZ, force = null) {
   if (w.traffic.length >= MAX_TRAFFIC) return null;
   // 对向车流占左侧车道，同向车流占右侧——两种车的玩法完全不同（一个躲、一个超），
   // 所以方向不是随机数的一部分，而是先定方向、再定车型。
-  const oncoming = force ? force === "dayun" || force === "oncom" : random(w, 0, 1) < 0.46;
+  // 对向来车占三分之一：它比同向车危险得多（相对速度三倍），密了就只剩躲，
+  // 没有超车的余地——而"超车"才是这条路的主旋律。
+  const oncoming = force ? force === "dayun" || force === "oncom" : random(w, 0, 1) < 0.34;
   const kind = force || (oncoming ? pickOncoming(w) : pickSame(w));
   const info = VEHICLES[kind];
   const lanes = oncoming
     ? [0, w.track.sameLanes[0] - 1]
     : [w.track.sameLanes[0], w.track.lanes - 1];
   const lane = lanes[0] + randInt(w, lanes[1] - lanes[0] + 1);
-  const gap = oncoming ? 330 + random(w, 0, 190) : 250 + random(w, 0, 150);
+  const gap = oncoming ? 300 + random(w, 0, 160) : 180 + random(w, 0, 110);
   const laneX = w.track.laneX(lane) + random(w, -0.35, 0.35);
   const vehicle = {
     id: w.nextEntity++,
