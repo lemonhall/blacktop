@@ -1,0 +1,220 @@
+/**
+ * 车手：物理、体力、出拳、摔车。人类和机器人走的是**同一段代码**，区别只在
+ * "input 从哪来"——人类从命令队列（`netcode.mjs`），机器人从 `ai.mjs`。
+ *
+ * 摔车是整个手感的重心。撞车、被打到体力见底，结果都是"人车分离"：车速掉光、
+ * 躺两秒、再从低速爬起来。它必须**痛**（否则躲车流没有意义），但不能**致命**
+ * （否则一局里摔两次就不用玩了）——所以时长固定、体力固定回一点点。
+ */
+
+import { clamp, KMH } from "./constants.mjs";
+import { BIKES } from "./data.mjs";
+import { resetQueue } from "./netcode.mjs";
+import { VEHICLES, fling, kickTarget } from "./traffic.mjs";
+
+export const STAMINA_MAX = 100;
+export const NITRO_TIME = 2.4;
+export const NITRO_CD = 9;
+
+export const TUNE = {
+  regen: 8.5, regenDelay: 3.4,
+  attackCost: 5, attackCd: 0.5, swing: 0.3,
+  punchDmg: 20, kickBonus: 7,
+  wreck: 2.0, wreckHeavy: 2.8,
+  recover: 62, recoverSpeed: 0.34,
+  shoulderCap: 0.64, offroadDrag: 1.6,
+  driftPull: 0.44, steerSpeed: 11.5,
+};
+
+export function newRacer(w, { id, kind, ownerId, name, bike = 0, palette = 0, skill = 1, grid = { x: 0, z: 0 } }) {
+  const r = {
+    id, kind, ownerId, name,
+    bike: clamp(Math.floor(bike), 0, BIKES.length - 1),
+    palette: palette % 8, skill,
+    x: grid.x, z: grid.z, v: 0, lat: 0, lean: 0, wobble: 0,
+    stamina: STAMINA_MAX, state: "ride", wreck: 0, wreckKind: "",
+    attackCd: 0, hitCd: 0, swing: 0, nitroT: 0, nitroCd: 0,
+    lastHit: -99, downs: 0, dayuns: 0, crashes: 0, topV: 0, cash: 0,
+    finished: false, finishTime: 0, rank: 0, kmh: 0,
+  };
+  resetQueue(r);
+  return r;
+}
+
+export const specOf = r => BIKES[r.bike];
+
+/** 一帧的推进。`input` 是 { th, br, st, act, nos }，取值都是 -1/0/1 或布尔。 */
+export function stepRacer(w, r, dt, input = {}) {
+  const spec = specOf(r);
+  r.attackCd = Math.max(0, r.attackCd - dt);
+  r.hitCd = Math.max(0, r.hitCd - dt);
+  r.swing = Math.max(0, r.swing - dt);
+  r.nitroT = Math.max(0, r.nitroT - dt);
+  r.nitroCd = Math.max(0, r.nitroCd - dt);
+
+  if (r.state === "wreck") return stepWreck(w, r, dt);
+
+  const road = w.track.surfaceAt(r.x) === "road";
+  const nitro = r.nitroT > 0;
+  const cap = spec.vmax * (nitro ? 1.18 : 1) * (road ? 1 : TUNE.shoulderCap);
+  // 阻力常数取 accel / vmax²：于是"油门到底"的稳态速度正好落在 vmax，不用手调。
+  const drag = spec.accel / (spec.vmax * spec.vmax);
+  let a = (input.th ? spec.accel : 0) - (input.br ? spec.accel * 2.1 : 0);
+  if (nitro) a += spec.accel * 0.85;
+  a -= drag * r.v * r.v * (road ? 1 : TUNE.offroadDrag);
+  r.v = clamp(r.v + a * dt, 0, cap);
+  if (r.v > r.topV) r.topV = r.v;
+
+  // 压车：速度越高越难压（这是"极速车弯道吃亏"的来源），弯道里还有一股离心力。
+  const turn = spec.turn * (1.28 - 0.6 * (r.v / spec.vmax));
+  const drift = -w.track.curveAt(r.z) * r.v * r.v / spec.grip * TUNE.driftPull;
+  r.x += (input.st * turn * TUNE.steerSpeed + drift) * dt + r.lat * dt;
+  r.lat *= 1 - 2.3 * dt;
+  r.x = clamp(r.x, -w.track.limitX, w.track.limitX);
+  r.lean += ((input.st || 0) * 0.9 - r.lean) * Math.min(1, dt * 6);
+  r.wobble = road ? 0 : Math.min(1, r.wobble + dt * 3);
+  if (road) r.wobble = Math.max(0, r.wobble - dt * 3);
+
+  if (input.nos && r.nitroCd <= 0 && r.nitroT <= 0) {
+    r.nitroT = NITRO_TIME; r.nitroCd = NITRO_CD;
+    w.events.push({ k: "nitro", a: r.id });
+  }
+  if (w.time - r.lastHit > TUNE.regenDelay) {
+    r.stamina = Math.min(STAMINA_MAX, r.stamina + TUNE.regen * dt);
+  }
+  if (input.act & 1) attack(w, r);
+
+  collideTraffic(w, r) || bump(w, r);
+  r.kmh = r.v * KMH;
+  return r;
+}
+
+function stepWreck(w, r, dt) {
+  r.wreck -= dt;
+  r.v = Math.max(0, r.v - 30 * dt);
+  r.z += r.v * dt;
+  r.x = clamp(r.x + r.lat * dt, -w.track.limitX, w.track.limitX);
+  r.lat *= 1 - 2.2 * dt;
+  r.kmh = r.v * KMH;
+  r.lean *= 1 - 3 * dt;
+  if (r.wreck <= 0) {
+    // 爬起来：给一点滚动速度，否则从静止重新起步在一局里就是死刑。
+    r.state = "ride";
+    r.stamina = TUNE.recover;
+    r.hitCd = 1.2;
+    r.v = Math.max(r.v, specOf(r).vmax * TUNE.recoverSpeed);
+    resetQueue(r);
+  }
+  return r;
+}
+
+/**
+ * 出拳 / 飞踢。判定顺序就是**优先级**：
+ *   1. 迎面来的大运在出脚窗口里 → 踢飞（全场唯一能把大运送上天的方式）；
+ *   2. 身旁有人 → 一拳下去，打到体力见底就把他撂下车；
+ *   3. 什么都没有 → 挥空（照样掉体力，别乱按）。
+ */
+export function attack(w, r) {
+  if (r.attackCd > 0 || r.state !== "ride") return false;
+  r.attackCd = TUNE.attackCd;
+  r.swing = TUNE.swing;
+  r.stamina = Math.max(0, r.stamina - TUNE.attackCost);
+
+  const truck = kickTarget(w, r);
+  if (truck && fling(w, truck, Math.sign(truck.x - r.x) || 1)) {
+    r.dayuns++;
+    r.cash += 1500;
+    r.stamina = Math.min(STAMINA_MAX, r.stamina + 22);
+    w.events.push({ k: "fling", a: r.id, z: truck.z, x: truck.x, w: r.x });
+    return true;
+  }
+
+  const target = punchTarget(w, r);
+  if (!target) {
+    w.events.push({ k: "whiff", a: r.id, z: r.z, x: r.x });
+    return false;
+  }
+  const dmg = (TUNE.punchDmg + r.v * 0.12) * (1.15 / specOf(target).mass);
+  target.stamina -= dmg;
+  target.lastHit = w.time;
+  target.lat += Math.sign(target.x - r.x || 1) * 4.4;
+  target.wobble = 1;
+  w.events.push({ k: "hit", a: r.id, b: target.id, z: target.z, x: target.x, d: Math.round(dmg) });
+  if (target.stamina <= 0) {
+    if (wreck(w, target, { kind: "down", by: r.id })) r.downs++;
+  }
+  return true;
+}
+
+/** 打谁：优先"正前方最近"，其次是并排。身后的目标要够近才回头踢。 */
+function punchTarget(w, r) {
+  let best = null, bestScore = Infinity;
+  for (const o of w.racers) {
+    if (o === r || o.state === "wreck") continue;
+    const dz = o.z - r.z;
+    const dx = o.x - r.x;
+    if (dz < -2.4 || dz > 3.8 || Math.abs(dx) > 1.75) continue;
+    const score = (dz < 0 ? -dz * 1.6 : dz) + Math.abs(dx) * 0.7;
+    if (score < bestScore) { best = o; bestScore = score; }
+  }
+  return best;
+}
+
+/** 撞车：撞上就跑不掉。对向 / 重卡额外加时——速度差是伤害的一部分。 */
+function collideTraffic(w, r) {
+  if (r.hitCd > 0) return false;
+  for (const v of w.traffic) {
+    if (v.state !== "run") continue;
+    const info = VEHICLES[v.kind];
+    if (Math.abs(v.z - r.z) > (info.len + 2.2) * 0.5) continue;
+    if (Math.abs(v.x - r.x) > info.wid * 0.5 + 0.55) continue;
+    const heavy = v.kind === "dayun" || v.kind === "truck";
+    r.hitCd = 1.1;
+    wreck(w, r, { kind: v.dir === -1 ? "headon" : "rear", heavy });
+    return true;
+  }
+  return false;
+}
+
+/** 车与车贴在一起：互相挤开，谁也不掉速（掉速交给"撞车"和出拳）。 */
+function bump(w, r) {
+  for (const o of w.racers) {
+    if (o === r || o.state === "wreck" || r.state === "wreck") continue;
+    const dz = o.z - r.z, dx = o.x - r.x;
+    if (Math.abs(dz) > 2.0 || Math.abs(dx) > 1.05) continue;
+    const push = Math.sign(dx || 1) * (1.05 - Math.abs(dx)) * 2.4;
+    r.lat -= push; o.lat += push;
+    // 贴在一起时快的那台会把慢的那台"带"起来一点——现实里叫尾流，游戏里叫
+    // "别被队友卡住"。系数刻意小到看不出来，但足以避免两个人互相拖死。
+    if (Math.abs(dx) < 0.55 && r.v > o.v) o.v += (r.v - o.v) * 0.03;
+  }
+}
+
+/**
+ * 摔车。**幂等**：同一帧里"撞车"和"被打下车"可能同时发生，先到的那个说了算。
+ * 顺带把输入队列清空——那是"我本来还要往哪走"的债，人在地上就不该继续兑现。
+ */
+export function wreck(w, r, { kind = "crash", by = 0, heavy = false } = {}) {
+  if (r.state === "wreck") return false;
+  r.state = "wreck";
+  r.wreck = heavy ? TUNE.wreckHeavy : TUNE.wreck;
+  r.wreckKind = kind;
+  r.crashes++;
+  r.stamina = 0;
+  r.lat += Math.sign(r.x || 1) * 5.2;
+  r.v *= 0.42;
+  r.lean = 0;
+  resetQueue(r);
+  w.events.push({ k: "wreck", a: r.id, s: kind, by, z: r.z, x: r.x, v: Math.round(r.v * KMH) });
+  return true;
+}
+
+/** 越线：名次由"第几个冲过终点"决定，所以这里只记时刻，排序在世界层做。 */
+export function crossFinish(w, r) {
+  if (r.finished || r.z < w.track.length) return false;
+  r.finished = true;
+  r.finishTime = w.time;
+  r.rank = ++w.finishers;
+  w.events.push({ k: "finish", a: r.id, r: r.rank, z: r.z, x: r.x, n: r.name, h: r.kind === "human" });
+  return true;
+}

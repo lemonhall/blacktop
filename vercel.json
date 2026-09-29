@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "outputDirectory": "web",
+  "cleanUrls": true,
+  "build": {
+    "env": {
+      "BLACKTOP_API": "https://blacktop-api.lemonhall.me"
+    }
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+    }
+  ]
+}
