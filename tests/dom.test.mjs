@@ -25,6 +25,17 @@ test("index.html 里有房间浏览器、候场名册与竞技场这三屏", () 
   }
 });
 
+/**
+ * 1996 那版的家伙系统在界面上有三个落点，少一个玩家就只能靠猜：
+ * **HUD 上"我腰里有什么"、键位小字里的换家伙、触屏上的换械按钮**。
+ */
+test("家伙系统在界面上说得清楚：牌子、键位、触屏按钮一个都不能少", () => {
+  assert.ok(ids.has("hudBelt"), "HUD 缺一行显示腰里那几件");
+  assert.match(html, /<kbd>Q<\/kbd>/u, "键位与帮助里必须写出换家伙的键");
+  assert.match(html, /data-hold="cycle"/u, "触屏上没有换械按钮，手机玩家就没法换家伙");
+  assert.match(html, /data-hold="punchBack"/u, "回身打的按钮不能丢");
+});
+
 test("脚本引用的每一个 DOM id 都在标记里存在", () => {
   const missing = [];
   for (const { name, source } of modules) {
@@ -56,8 +67,14 @@ test("标记引用的样式表与脚本都真的存在", () => {
  *      去跑（手感问题只有能被自动化量出来才算修好），而 Node 不认识站点绝对路径。
  *      相对路径在浏览器里等价：`web/sim` 就是 `sim` 的构建副本，都在 web/ 根下。
  *
- * 所以这条测试守的是**可解析性**：每个本地引用都要能对应上 `web/` 里的一份文件，
- * 缺了就说明前端会在运行时 404——不管它写的是哪一类路径。
+ *   3. `../../sim/x.mjs` —— 这一种要单独说，因为它是个"同一份文件的两个地址"。
+ *      URL 规范化不许往上翻出站点根：`/js/predict.mjs` 再往上一层还是 `/`，所以
+ *      `../../sim/x.mjs` 在浏览器里就是 `/sim/x.mjs`；而在 Node 里它落到仓库根的
+ *      `sim/`——正是 `web/sim/` 的那份正本（build 每回都从它拷过去）。两个地址、
+ *      一份内容，于是渲染层的代码第一次能被 `node --test` 直接 import 进来跑。
+ *
+ * 所以这条测试守的是**可解析性**：每个本地引用都要落到 `web/` 或仓库根的 `sim/`
+ * 里真存在的一份文件，缺了就说明前端会在运行时 404——不管它写的是哪一类路径。
  */
 test("前端模块的每一个本地 import 都指向 web/ 里真实存在的文件", () => {
   const missing = [];
@@ -67,7 +84,9 @@ test("前端模块的每一个本地 import 都指向 web/ 里真实存在的文
       const target = spec.startsWith("/sim/")
         ? path.join(ROOT, "web", spec.slice(1))
         : path.resolve(fromDir, spec);
-      assert.ok(target.startsWith(path.join(ROOT, "web")), `${name} → ${spec} 跑出 web/ 之外`);
+      const inWeb = target.startsWith(path.join(ROOT, "web"));
+      const inKernel = target.startsWith(path.join(ROOT, "sim"));
+      assert.ok(inWeb || inKernel, `${name} → ${spec} 落到了 web/ 与 sim/ 之外`);
       try { readFileSync(target); } catch { missing.push(`${name} → ${spec}`); }
     }
   }

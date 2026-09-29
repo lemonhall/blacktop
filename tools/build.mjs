@@ -40,18 +40,25 @@ const banner = [
 ].join("\n");
 writeFileSync(path.join(JS, "env.mjs"), `${banner}export const BUILD_API = "${api}";\n`, "utf8");
 
-/** 3. 便宜但有用的检查：静态站点引用的每一个共享内核模块都必须真的复制过去了。 */
+/**
+ * 3. 便宜但有用的检查：静态站点引用的每一个共享内核模块都必须真的复制过去了。
+ *
+ * 三种写法都要认：`/sim/x.mjs`（写死的绝对路径）、`../sim/x.mjs`、`../../sim/x.mjs`
+ * （相对路径）。后两种在浏览器里解析出来**仍然是 `/sim/x.mjs`**（URL 解析过不了
+ * 站点根），而 `node --test` 会把它们引到源码目录——渲染层因此第一次可测。
+ * 检查的口径统一成"取路径里的 `sim/…` 那一段，看它在 `web/` 下存不存在"。
+ */
 const missing = [];
 for (const name of readdirSync(JS)) {
   if (!name.endsWith(".mjs") || name === "env.mjs") continue;
   const source = readFileSync(path.join(JS, name), "utf8");
-  for (const [, spec] of source.matchAll(/from\s+"(\/sim\/[^"]+)"/gu)) {
-    const file = path.join(WEB, spec.slice(1));
+  for (const [, spec] of source.matchAll(/from\s+"(?:\.\.\/)*\/?(sim\/[^"]+)"/gu)) {
+    const file = path.join(WEB, spec);
     try { readFileSync(file); } catch { missing.push(`${name} → ${spec}`); }
   }
 }
 if (missing.length) {
-  console.error("以下 /sim/ 引用没有对应的文件，前端会在运行时 404：");
+  console.error("以下共享内核引用没有对应的文件，前端会在运行时 404：");
   for (const item of missing) console.error("  " + item);
   process.exit(1);
 }

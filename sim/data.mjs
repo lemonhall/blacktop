@@ -10,28 +10,12 @@ import { LANE_W } from "./constants.mjs";
 
 export const MAX_RACERS = 15;
 
-/**
- * 两条赛道。共同点：终点是一条带格子的横幅，路面按车道数算宽度。
- * 不同点全部写在表里——车道、长度、弯道烈度、坡度、车流密度、配色。
+/*
+ * 八条赛道的表住在 `maps.mjs`——它比这个文件里的任何一张表都长（八条路 × 五个
+ * 维度），而且是"哪天再加一条路"时唯一要改的地方。这里转出去，是为了让所有
+ * 既有调用方继续 `import { MODES } from "./data.mjs"`，而不必关心表搬过家。
  */
-export const MODES = {
-  city: {
-    id: "city", name: "夜色环路", sub: "CITY LOOP",
-    desc: "四车道柏油路 · 车流最密 · 弯道碎",
-    lanes: 4, length: 3600, trafficMs: 1500, dayunMs: 26000,
-    curveA: 1 / 240, curveB: 1 / 720, hillA: 5.5, hillB: 2.2,
-    sky: "dusk", ground: "city",
-    maxHumans: 2, bots: 13,
-  },
-  wild: {
-    id: "wild", name: "荒野公路", sub: "OPEN ROAD",
-    desc: "双车道 · 土路肩 · 长弯大坡 · 车流稀疏",
-    lanes: 2, length: 4200, trafficMs: 2400, dayunMs: 34000,
-    curveA: 1 / 420, curveB: 1 / 260, hillA: 11, hillB: 4.5,
-    sky: "noon", ground: "open",
-    maxHumans: 2, bots: 13,
-  },
-};
+export { MODE_IDS, MODES } from "./maps.mjs";
 
 export const DIFFICULTIES = [
   { id: 0, name: "休闲", sub: "CRUISE", skill: 0.74 },

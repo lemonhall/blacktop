@@ -13,6 +13,8 @@
 import { clamp, DT } from "./constants.mjs";
 import { BIKES, BOT_NAMES, MAX_RACERS, MODES, PALETTES } from "./data.mjs";
 import { createTrack, gridSlot } from "./track.mjs";
+import { cullCritters, spawnCritters, stepCritters } from "./critters.mjs";
+import { armTheField } from "./pickups.mjs";
 import { newRacer } from "./racer.mjs";
 
 /** 发车前倒数几秒。这段时间里油门是锁死的——十五台车一起抢第一个弯才公平。 */
@@ -35,7 +37,7 @@ export function createWorld({ tenant, roomId, mode = "city", difficulty = 1, see
     countdown: COUNTDOWN,
     time: 0, tick: 0, nextEntity: 1,
     stepCarry: 0,
-    racers: [], traffic: [], events: [],
+    racers: [], traffic: [], pickups: [], critters: [], critterCursor: 0, events: [],
     finishers: 0, finishOrder: [],
     nextTrafficAt: 0, nextDayunAt: 0,
     results: null, endedAt: 0, endReason: "",
@@ -66,7 +68,7 @@ export function startMatch(w, roster, seed) {
   w.time = 0; w.tick = 0; w.phase = "live";
   w.countdown = COUNTDOWN;
   w.stepCarry = 0;
-  w.racers = []; w.traffic = []; w.events = [];
+  w.racers = []; w.traffic = []; w.pickups = []; w.critters = []; w.critterCursor = 0; w.events = [];
   w.finishers = 0; w.finishOrder = []; w.results = null; w.endedAt = 0; w.endReason = "";
   // 注意单位：`trafficMs` 是毫秒（配置里读起来顺），而 `w.time` 是**秒**。
   // 这两个混过一次，表现是"整场比赛路上一辆车都没有"——而且不报错。
@@ -93,6 +95,9 @@ export function startMatch(w, roster, seed) {
     racer.gridIndex = i;
     w.racers.push(racer);
   });
+  // 摆家伙：一部分机器人自带一件，路上再撒几件。顺序放在所有人就位之后，
+  // 因为掉落的位置要读赛道——而赛道的车道数此刻才定下来。
+  armTheField(w);
   return w;
 }
 
@@ -139,7 +144,7 @@ export function settle(w, reason = "finish") {
     kind: r.kind, bike: r.bike, palette: r.palette,
     rank: 0, time: r.finished ? r.finishTime : null,
     z: Math.round(r.z), v: Math.round(r.topV * 3.6),
-    downs: r.downs, dayuns: r.dayuns, crashes: r.crashes,
+    downs: r.downs, kills: r.kills, crashes: r.crashes,
     cash: r.cash, dnf: !r.finished ? 1 : 0,
   }));
   rows.sort((a, b) => {
@@ -180,7 +185,7 @@ function payoutOf(rows) {
   const out = {};
   rows.forEach((row, i) => {
     const prize = base[i] !== undefined ? base[i] : 20;
-    out[row.ownerId] = prize + row.downs * 250 + row.dayuns * 1500;
+    out[row.ownerId] = prize + row.downs * 250 + row.kills * 1000;
   });
   return out;
 }

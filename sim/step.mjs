@@ -13,6 +13,8 @@ import { DT } from "./constants.mjs";
 import { aiInput } from "./ai.mjs";
 import { settleAck, takeCmd } from "./netcode.mjs";
 import { crossFinish, stepRacer } from "./racer.mjs";
+import { cullPickups } from "./pickups.mjs";
+import { cullCritters, spawnCritters, stepCritters } from "./critters.mjs";
 import { random } from "./rng.mjs";
 import { cullTraffic, spawnTraffic, stepTraffic } from "./traffic.mjs";
 import { cullEvents } from "./events.mjs";
@@ -27,10 +29,14 @@ export function stepWorld(w, dt = DT) {
     if (w.countdown <= 0) w.events.push({ k: "go", t: Math.round(w.time * 1000) });
   }
   stepTraffic(w, dt);
+  stepCritters(w, dt);
   for (const r of w.racers) stepOne(w, r, dt);
   pumpTraffic(w);
+  spawnCritters(w, leadZ(w));
   for (const r of w.racers) crossFinish(w, r);
   cullTraffic(w, cameraBackZ(w), leadZ(w));
+  cullCritters(w, cameraBackZ(w), leadZ(w));
+  cullPickups(w, cameraBackZ(w));
   cullEvents(w);
   checkEnd(w);
 }

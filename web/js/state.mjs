@@ -43,7 +43,7 @@ export const S = {
 
   keys: new Set(),
   touch: { steer: 0, throttle: 0, brake: 0, nitro: 0 },
-  actions: 0,                   // 待发出的一次性动作位（位掩码）：1 前打、2 回身打
+  actions: 0,                   // 待发出的一次性动作位（位掩码）：1 前打、2 回身打、4 换家伙
   seq: 0,
   lastSentAt: 0,
   lastPingAt: 0,

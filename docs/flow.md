@@ -206,12 +206,12 @@ GET /v1/neon/rooms/ABC123/socket?token=<token>      Upgrade: websocket
 ## 9. 结算
 
 第一名冲线之后，世界调用 `settle()`：按冲线时刻排、没冲线的按已跑距离排、
-发赏金（名次底薪 + 撂倒 ×250 + 踢飞大运 ×1500）、**并且把世界相位改成 `over`**。
+发赏金（名次底薪 + 撂倒 ×250 + 踹飞车/畜生 ×1000）、**并且把世界相位改成 `over`**。
 然后：
 
 ```
 { "t":"over", "results":{ "reason":"finish","track":"city","seed":…,
-  "players":[ { "rank":1,"name":"疤脸","time":76.15,"downs":3,"dayuns":0,"cash":2750,"dnf":0 }, … ],
+  "players":[ { "rank":1,"name":"疤脸","time":76.15,"downs":3,"kills":0,"cash":2750,"dnf":0 }, … ],
   "payout":{ "g_…":2750, "bot:3":1200 } } }
 ```
 

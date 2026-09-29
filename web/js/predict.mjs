@@ -15,8 +15,14 @@
  * 直线往前跑的假路径，一进弯就整条路都错了。
  */
 
-import { DT, KMH } from "/sim/constants.mjs";
-import { stepRacer } from "/sim/racer.mjs";
+/**
+ * 这里的共享内核走**相对路径**（`../sim/`）而不是站点绝对路径（`/sim/`）：两者在
+ * 浏览器里是同一个文件，但只有相对路径能让 Node 直接 import 这个模块——而"本地
+ * 预测能不能跑起来"必须被自动化钉住（它坏掉的样子是"油门一点作用都没有"，浏览器
+ * 里查起来极慢）。
+ */
+import { DT, KMH } from "../../sim/constants.mjs";
+import { stepRacer } from "../../sim/racer.mjs";
 import { resetCmds } from "./cmd.mjs";
 
 /**
@@ -33,23 +39,31 @@ export function initPredict(S, mine) {
   resetCmds();
   // 迷你世界：只要"够 stepRacer 跑起来"的那几样。车流与对手都是空数组，
   // 于是 `collideTraffic` 与 `bump` 自然成了空操作。
-  S.predictW = { track: S.track, traffic: [], racers: [], events: [], time: 0, tick: 0, phase: "live" };
+  // `pickups` 必须是**空数组而不是 undefined**：`stepRacer` 每格都会调一次
+  // `takePickup(w, r)`，少这一个字段就是"本地预测一开场就抛异常、油门立刻失灵"。
+  S.predictW = {
+    track: S.track, traffic: [], racers: [], pickups: [], critters: [], events: [],
+    time: 0, tick: 0, phase: "live",
+  };
   S.predictMe = {
     id: -1, kind: "human", ownerId: "", name: "",
     bike: mine.bike, palette: mine.palette, skill: 1,
     x: mine.x, z: mine.z, v: mine.v, lat: mine.ackLat || 0, lean: 0, wobble: 0,
     stamina: mine.stamina, state: mine.state, wreck: mine.wreck, wreckKind: "",
     attackCd: 0, hitCd: 0, swing: 0, nitroT: 0, nitroCd: 0,
-    lastHit: -99, downs: 0, dayuns: 0, crashes: 0, topV: mine.v, cash: 0,
+    // 预测世界里的腰永远是空的：捡与抢都发生在**权威端**，这里只负责把手上的
+    // 那一件画出来。`belt` 不能省——`takePickup` 会读它。
+    belt: [], wi: 0,
+    lastHit: -99, downs: 0, kills: 0, crashes: 0, topV: mine.v, cash: 0,
     finished: false, finishTime: 0, rank: 0, kmh: mine.kmh,
   };
   S.predictW.racers = [S.predictMe];
 }
 
 /**
- * 走一格。`act`（1 前打 / 2 回身打）只是让画面上的拳头立刻出去，判定仍然在
- * 服务端——预测世界里的对手与车流都是空的，所以这一层算出来的只会是"我掉了
- * 一点体力、胳膊挥了一下"，绝不会自作主张把谁撂下车。
+ * 走一格。`act`（1 前打 / 2 回身打 / 4 换家伙）只是让画面上的拳头立刻出去，
+ * 判定仍然在服务端——预测世界里的对手与车流都是空的，所以这一层算出来的只会是
+ * "我掉了一点体力、胳膊挥了一下"，绝不会自作主张把谁撂下车。
  */
 export function stepPredict(S, dt, controls, act = 0) {
   const me = S.predictMe, w = S.predictW;
@@ -58,6 +72,9 @@ export function stepPredict(S, dt, controls, act = 0) {
     th: controls.th, br: controls.br, st: controls.st, nos: controls.nos,
     act: act | 0,
   });
+  // 预测世界里只会攒下"挥空"这类没人看的事件（对手是空的）。不清的话，一场
+  // 十分钟的比赛下来这里会攒下几千条死数据。
+  w.events.length = 0;
   return me;
 }
 

@@ -88,29 +88,101 @@
 }
 @keyframes bt-feed { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
 
-/* ------------------------------------------------------------ 底部仪表盘 */
+/* ------------------------------------------------------------ 底部仪表舱 */
+/*
+ * 这一块是**仪表舱**，不是一张卡片。
+ *
+ * 上一版是一块带圆角、带边框、带毛玻璃的大矩形——那是"贴在屏幕上的一个 UI 控件"，
+ * 和"我正坐在这台车上"这件事没有任何关系。真车的仪表是装在车把与油箱之间那块壳
+ * 里的：上沿一条弧线、两侧收进去、**下沿被车头切掉**。1996 那版和 3DO 版的 HUD
+ * 都是这个长相（见 `refs/three-do-hud-alt.jpg`：黑色舱体 + 两只白底盘 + 红指针）。
+ *
+ * 所以这里用 `border-radius: 46% / 30px` 做出那条弧顶，用内阴影做出舱体的纵深，
+ * 再贴着弧线压一道镀铬高光。下半部分直接压在屏幕底边上。
+ */
 .hud-dash {
-  position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%);
-  display: grid; grid-template-columns: 118px minmax(196px, 280px) 118px;
-  align-items: end; gap: 16px; padding: 12px 18px;
-  border: 1px solid var(--line2); border-radius: 18px;
-  background: linear-gradient(160deg, #131c2ae8, #0a111cf2);
-  box-shadow: 0 18px 40px #00000088; backdrop-filter: blur(12px);
+  position: absolute; left: 50%; bottom: 0; transform: translateX(-50%);
+  display: grid; grid-template-columns: 132px minmax(196px, 286px) 132px;
+  align-items: end; justify-items: center; gap: 10px;
+  width: min(648px, 90vw);
+  padding: 34px 30px 8px;
+  /*
+   * 半径的横轴给到 50%（= 面板半宽）、纵轴给 62px，上沿就成了一条**完整的椭圆弧**：
+   * 中间最高、两侧沉下去，两个角不再有"直边接圆角"的破绽。这正是真车那块导流罩
+   * （cowl）的形状，也是 3DO 那版仪表舱的轮廓。
+   */
+  border-radius: 50% 50% 0 0 / 62px 62px 0 0;
+  background: radial-gradient(122% 92% at 50% 106%, #2c3647 0%, #141b27 42%, #080c13 72%, #04060a 100%);
+  box-shadow:
+    inset 0 2px 0 #ffffff2b,
+    inset 0 6px 0 #ffffff12,
+    inset 0 18px 26px #000000aa,
+    inset 0 -30px 44px #000000e6,
+    0 -14px 34px #0000008c;
 }
-.dash-block { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 118px; }
-.dash-block canvas { display: block; width: 96px; height: 96px; }
-.dash-speed { font-size: 9px; letter-spacing: 1.4px; color: var(--muted); }
-.dash-speed b {
-  margin-right: 3px; font-size: 21px; font-style: italic; color: var(--text);
+/* 弧顶那道镀铬边就交给 `inset` 阴影——它跟着圆角走，比一条拉直的亮线可信得多。 */
+/* 舱体两侧的黑色侧板：把两根表"焊"在壳里，而不是浮在上面 */
+.hud-dash::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 46px;
+  border-radius: 0 0 4px 4px;
+  background: linear-gradient(180deg, #00000000, #04060bdd 44%, #02040a);
+}
+.dash-block {
+  position: relative; z-index: 1;
+  display: flex; flex-direction: column; align-items: center; gap: 5px; width: 126px;
+  /* 两只表**探出**导流罩的上沿。实机照片里表的铬圈就是压在罩子上边的，
+     表缩在罩子里反而像贴了一张贴纸。 */
+  margin-top: -24px;
+}
+.dash-block canvas {
+  display: block; width: 118px; height: 118px;
+  filter: drop-shadow(0 6px 10px #000000cc);
+}
+/*
+ * 中段那排指示灯：真车的仪表舱里一定有，而且平时永远是"暗着的红"——会亮的只有自己，
+ * 那它就没有信息量。所以这一排是纯装饰；但没有它，中间那块会空得像块补丁。
+ */
+.dash-lamps { display: flex; gap: 4px; margin-bottom: 3px; }
+.dash-lamps > b {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: radial-gradient(circle at 38% 30%, #e0625a, #5c1610 72%);
+  box-shadow: inset 0 0 2px #000000cc;
+}
+/* 表盘下面那块**液晶**：老表的读数就是这种绿字黑屏，比一排灰字像仪表得多 */
+.dash-speed {
+  display: flex; align-items: baseline; gap: 4px;
+  padding: 0 8px 2px; border-radius: 3px;
+  border: 1px solid #2b3b34;
+  background: linear-gradient(180deg, #0e1a13, #060d09);
+  box-shadow: inset 0 0 10px #46ff9a1f, 0 2px 6px #000000aa;
+  font-size: 8px; letter-spacing: 1.3px; color: #4fd489;
   font-variant-numeric: tabular-nums;
 }
-.dash-center {
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-  padding-bottom: 4px; text-align: center;
+.dash-speed b {
+  font-size: 18px; font-style: normal; color: #92ffbe;
+  text-shadow: 0 0 9px #46ff9a80;
 }
-.dash-center > strong { font-size: 17px; font-style: italic; letter-spacing: .5px; }
+.dash-center {
+  position: relative; z-index: 1;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  padding-bottom: 10px; text-align: center;
+}
+/* 名字旁边那个挡位牌：转速表上的针为什么在跳，看它一眼就明白了。 */
+.dash-name { display: flex; align-items: center; gap: 6px; }
+.dash-name strong { font-size: 16px; font-style: italic; letter-spacing: .5px; }
+.gear-badge {
+  display: inline-flex; align-items: baseline; gap: 1px; padding: 0 5px 1px;
+  border-radius: 3px; border: 1px solid #2b3b34;
+  background: linear-gradient(180deg, #0e1a13, #060d09);
+  color: #4fd489; font-size: 8px; font-style: normal; letter-spacing: .5px;
+}
+.gear-badge b {
+  font-size: 13px; color: #92ffbe;
+  text-shadow: 0 0 8px #46ff9a66; font-variant-numeric: tabular-nums;
+}
 .dash-gap,
 .dash-rival { font-size: 9px; letter-spacing: .8px; color: var(--muted); }
+.dash-rival em { font-style: normal; }
 .dash-gap b,
 .dash-rival b { color: var(--text); font-size: 11px; }
 
@@ -127,8 +199,27 @@
 .sta-row.nos .sta-track { height: 4px; }
 .sta-row.nos .sta-track > b { background: linear-gradient(90deg, #3ad2ff, #c691ff); }
 
+/* ------------------------------------------------------- 腰里那几件家伙 */
+/* 一行牌子：亮着的是手里这件。它是"我现在有什么"的唯一出处，所以放在
+   中央那一列、紧贴氮气条上面——和"我还剩多少"排在同一条视线高度上。 */
+.belt-row {
+  display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
+  gap: 4px; margin-top: 2px; min-height: 15px; max-width: 190px;
+}
+.belt-chip {
+  padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line2);
+  background: #ffffff0f; color: var(--muted);
+  font-size: 9px; font-weight: 700; font-style: normal; letter-spacing: .3px;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.belt-chip.on {
+  border-color: var(--amber); background: var(--amber); color: #201203;
+  box-shadow: 0 0 10px #ffb03a59;
+}
+.belt-chip.empty { opacity: .6; }
+
 .progress-rail {
-  position: absolute; left: 50%; bottom: 178px; transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: 190px; transform: translateX(-50%);
   width: min(560px, 66vw); height: 4px; border-radius: 3px;
   background: #ffffff1c; overflow: visible;
 }
@@ -184,7 +275,7 @@ html.touch-device .hud-keys { display: none; }
 
 /* 触屏设备上仪表盘会跟控件抢地方：把它挪到上面一档并缩小。 */
 html.touch-device .hud-dash { bottom: calc(96px + env(safe-area-inset-bottom)); padding: 9px 12px; gap: 10px; }
-html.touch-device .dash-block { width: 92px; }
+html.touch-device .dash-block { width: 92px; margin-top: -10px; }
 html.touch-device .dash-block canvas { width: 74px; height: 74px; }
 html.touch-device .progress-rail { bottom: calc(232px + env(safe-area-inset-bottom)); }
 
@@ -198,7 +289,7 @@ html.touch-device .progress-rail { bottom: calc(232px + env(safe-area-inset-bott
   .dash-block { width: 84px; }
   .dash-block canvas { width: 68px; height: 68px; }
   .dash-speed { display: none; }
-  .dash-center > strong { font-size: 14px; }
+  .dash-name strong { font-size: 14px; }
   .progress-rail { bottom: 152px; width: 76vw; }
 }
 

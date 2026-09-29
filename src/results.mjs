@@ -51,7 +51,7 @@ export async function leaderboard(env, tenantId, limit = 20) {
             json_extract(j.value, '$.name')    AS name,
             COUNT(*)                           AS games,
             SUM(json_extract(j.value, '$.downs'))   AS downs,
-            SUM(json_extract(j.value, '$.dayuns'))  AS dayuns,
+            SUM(json_extract(j.value, '$.kills'))   AS kills,
             SUM(json_extract(j.value, '$.crashes')) AS crashes,
             SUM(json_extract(j.value, '$.cash'))    AS cash,
             MIN(json_extract(j.value, '$.rank'))    AS bestRank,

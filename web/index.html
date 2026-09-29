@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>BLACKTOP · 黑路狂飙</title>
-<meta name="description" content="十五台车挤在同一条路上的在线摩托暴走竞速：人机混战、车流、迎面大运、一脚踢飞。跑在 Cloudflare Workers 上。">
+<meta name="description" content="十五台车挤在同一条路上的在线摩托暴走竞速：八条赛道、人机混战、十三种社会车辆、能一脚踹飞的大运。跑在 Cloudflare Workers 上。">
 <meta name="theme-color" content="#0a0e17">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/styles/game.css">
@@ -128,16 +128,11 @@
       <aside class="lobby-side">
         <div class="side-panel">
           <div class="side-panel-head">赛道 <span>COURSE · 房主决定</span></div>
-          <div class="mode-cards">
-            <button type="button" class="mode-card" data-mode="city" aria-pressed="false">
-              <strong>夜色环路<i>CITY LOOP</i></strong>
-              <small>四车道柏油路 · 车流最密 · 弯道碎</small>
-            </button>
-            <button type="button" class="mode-card" data-mode="wild" aria-pressed="false">
-              <strong>荒野公路<i>OPEN ROAD</i></strong>
-              <small>双车道 · 土路肩 · 长弯大坡 · 车流稀疏</small>
-            </button>
-          </div>
+          <!--
+            八张赛道卡片由 `roomui.mjs` 从 `sim/data.mjs` 的 `MODES` 现渲染。
+            写死在标记里的话，"加一条路"就变成了两处改动，迟早只改一处。
+          -->
+          <div class="mode-cards" id="modeCards"></div>
           <div class="side-panel-head">难度 <span>BOT SKILL</span></div>
           <div class="difficulty-select">
             <button type="button" data-difficulty="0" aria-pressed="false">休闲</button>
@@ -226,24 +221,30 @@
         <kbd>空格</kbd>氮气 ·
         <kbd>J</kbd>前打 ·
         <kbd>K</kbd>回身打 ·
+        <kbd>Q</kbd>换家伙 ·
         <kbd>Esc</kbd>暂停
       </p>
 
       <div class="hud-dash">
         <div class="dash-block">
-          <canvas id="gaugeL" width="112" height="112"></canvas>
+          <canvas id="gaugeL" width="124" height="124"></canvas>
           <span class="dash-speed"><b id="gaugeLSpeed">0</b>km/h</span>
           <div class="sta-row"><span>体力</span><i class="sta-track"><b id="hudSta"></b></i><em id="hudStaText">100</em></div>
         </div>
         <div class="dash-center">
-          <strong id="hudName">车手</strong>
+          <i class="dash-lamps" aria-hidden="true"><b></b><b></b><b></b><b></b><b></b></i>
+          <span class="dash-name">
+            <strong id="hudName">车手</strong>
+            <em class="gear-badge"><b id="hudGear">1</b>挡</em>
+          </span>
           <span class="dash-gap">与头名 <b id="hudGap">领跑</b></span>
-          <span class="dash-rival">前车 <b id="hudRival">独自领跑</b></span>
+          <span class="dash-rival"><em id="hudRivalTag">前车</em> <b id="hudRival">独自领跑</b></span>
+          <div id="hudBelt" class="belt-row"></div>
           <div class="sta-row nos"><span>氮气</span><i class="sta-track"><b id="hudNos"></b></i></div>
         </div>
         <div class="dash-block">
-          <canvas id="gaugeR" width="112" height="112"></canvas>
-          <span class="dash-speed"><b id="gaugeRSpeed">0</b>km/h</span>
+          <canvas id="gaugeR" width="124" height="124"></canvas>
+          <span class="dash-speed"><b id="gaugeRSpeed">1.2</b>×1000</span>
           <div class="sta-row"><span>他的体力</span><i class="sta-track"><b id="hudRSta"></b></i><em id="hudRStaText">100</em></div>
         </div>
       </div>
@@ -258,6 +259,7 @@
     <div class="touch-controls" aria-hidden="false">
       <div id="steerPad" class="steer-pad" aria-label="压车滑条"><i></i></div>
       <div class="touch-buttons">
+        <button type="button" class="touch-button small" data-hold="cycle">换械</button>
         <div class="punch-pair">
           <button type="button" class="touch-button small" data-hold="punchBack">回身</button>
           <button type="button" class="touch-button" data-hold="punchFront">前打</button>
@@ -280,13 +282,13 @@
       <div class="result-stats">
         <div><strong id="resultTime">—</strong><span>完赛时间</span></div>
         <div><strong id="resultDowns">0</strong><span>撂倒的人</span></div>
-        <div><strong id="resultDayuns">0</strong><span>踢飞大运</span></div>
+        <div><strong id="resultKills">0</strong><span>踢爆车辆</span></div>
         <div><strong id="resultCrashes">0</strong><span>摔车</span></div>
       </div>
       <div class="result-payout">本场赏金 <strong id="resultPayout">¥0</strong></div>
       <p id="resultRecord" class="result-record"></p>
       <div class="result-head">
-        <span>#</span><span>车手</span><span>用时</span><span>撂倒</span><span>大运</span><span>赏金</span>
+        <span>#</span><span>车手</span><span>用时</span><span>撂倒</span><span>踢爆</span><span>赏金</span>
       </div>
       <div id="resultTable" class="result-table"></div>
       <div class="result-actions">
@@ -315,13 +317,19 @@
         <div><kbd>空格</kbd><span>氮气 · 冷却 9 秒</span></div>
         <div><kbd>J</kbd><kbd>F</kbd><span>前打 · 打身前的人</span></div>
         <div><kbd>K</kbd><span>回身打 · 打身后的人</span></div>
+        <div><kbd>Q</kbd><span>换家伙 · 腰里那几件轮着用</span></div>
         <div><kbd>Esc</kbd><kbd>P</kbd><span>暂停</span></div>
       </div>
       <p class="help-note">
         攻击和当年一样只有"一拳"，区别在<b>方向</b>：<kbd>J</kbd> 朝前打身前的人，
         <kbd>K</kbd> 回身打追上来的那个人。挥空一样掉体力，别乱按。<br>
-        打到体力见底，对手就下车；<b>迎面来的大运可以一脚踢飞</b>（只有朝前那一拳踢得到），
-        那一脚值 ¥1500。撞上对向来车或大运，自己也会摔——所以贴着对向车道超车是要付学费的。
+        路上捡到或抢到的家伙会挂在腰里（最多四件），<kbd>Q</kbd> 轮着换——
+        <b>棍棒、铁链、撬棍、双节棍</b>拿着用不完，<b>电棍、流星锤、油桶</b>各只有十次，
+        用光当场丢。趁对手举着家伙出手的那一下打他，就能把他的家伙<b>抢过来</b>。<br>
+        打到体力见底，对手就下车；<b>路上每一台社会车辆都能一脚踹飞</b>（轿车、公交、
+        半挂、油罐、搅拌车……只有朝前那一脚够得着），越大的车赏金越高、飞得越低；
+        路上还有牛、羊、鹿、野猪、狗、鹅——撞上去会摔，踹飞它会叫一声。
+        撞上对向来车，自己也会摔——所以贴着对向车道超车是要付学费的。
       </p>
       <div class="modal-actions">
         <button type="button" id="closeHelp" class="primary-button">知道了</button>

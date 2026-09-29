@@ -1,9 +1,9 @@
 /**
  * 输入采集：键盘、触屏 → 一帧操作意图。
  *
- * 摩托车的操作只有六个：**油门、刹车、压车（左右连续量）、氮气、前打、回身打**。
- * 没有准星、没有鼠标——这一层因此比射击版干净得多：它只回答"这一帧你想怎么骑"，
- * 坐标一个字节都不上行，这是"改一行 JS 就能瞬移"的唯一根治法。
+ * 摩托车的操作只有七个：**油门、刹车、压车（左右连续量）、氮气、前打、回身打、
+ * 换家伙**。没有准星、没有鼠标——这一层因此比射击版干净得多：它只回答"这一帧你
+ * 想怎么骑"，坐标一个字节都不上行，这是"改一行 JS 就能瞬移"的唯一根治法。
  *
  * 方向键与 WASD **同时生效**，不是二选一：`THROTTLE` 这样的表里把两种键都列上，
  * 谁按哪个都算数。攻击按原版的路子分前后两个方向（不是两套招式）——详见 `sim/racer.mjs`。
@@ -18,21 +18,26 @@ const NITRO = ["Space"];
 const PUNCH_FRONT = ["KeyJ", "KeyF"];
 /** 回身一拳：打身后追上来的那个人。 */
 const PUNCH_BACK = ["KeyK"];
+/** 换家伙：腰里那几件轮着用。只有一件时按了也没反应（见 `cycleWeapon`）。 */
+const CYCLE = ["KeyQ"];
 
-/** 触屏那两个按钮 → 同一个位掩码（1 前打 / 2 回身打）。 */
-const TOUCH_ACT = { punchFront: 1, punchBack: 2 };
+/** 触屏那几个按钮 → 同一个位掩码（1 前打 / 2 回身打 / 4 换家伙）。 */
+const TOUCH_ACT = { punchFront: 1, punchBack: 2, cycle: 4 };
 
 const any = (keys, list) => list.some(code => keys.has(code));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 export function attachInput(S, { onPunch, onNitro } = {}) {
   document.addEventListener("keydown", event => {
-    if (event.repeat && (NITRO.includes(event.code) || event.code === "Space")) return;
+    // 按住不放的键：氮气是"持续"的（它读 keys 集合，这里拦的只是重复触发音效），
+    // 换家伙是**一次性**的——按住 Q 一路把四件轮一圈，那不是操作，那是抽奖。
+    if (event.repeat && (NITRO.includes(event.code) || CYCLE.includes(event.code) || event.code === "Space")) return;
     // 方向键与空格会滚动页面——赛车游戏里这尤其致命（画面一顿就甩出弯道）。
     if (/^Arrow/u.test(event.code) || event.code === "Space") event.preventDefault();
     S.keys.add(event.code);
     if (PUNCH_FRONT.includes(event.code)) { S.actions |= 1; onPunch?.(); }
     else if (PUNCH_BACK.includes(event.code)) { S.actions |= 2; onPunch?.(); }
+    else if (CYCLE.includes(event.code)) S.actions |= 4;
     if (NITRO.includes(event.code)) onNitro?.();
   });
   document.addEventListener("keyup", event => S.keys.delete(event.code));

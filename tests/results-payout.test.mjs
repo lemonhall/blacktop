@@ -40,7 +40,7 @@ test("真跑完一局：冠军拿的是名次底薪，不是 0", () => {
   const rows = w.results.players;
   const first = rows.find(p => p.rank === 1);
   assert.ok(first, "结算里必须有第一名");
-  assert.equal(prizeOf(w.results, first.ownerId), 2000 + first.downs * 250 + first.dayuns * 1500,
-    "冠军 = 2000 底薪 + 撂倒提成 + 踢飞大运");
+  assert.equal(prizeOf(w.results, first.ownerId), 2000 + first.downs * 250 + first.kills * 1000,
+    "冠军 = 2000 底薪 + 撂倒提成 + 踹飞社会车辆");
   assert.ok(prizeOf(w.results, first.ownerId) >= 2000, "冠军的赏金不可能低于底薪");
 });

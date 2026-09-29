@@ -26,6 +26,10 @@ let noteHoldUntil = 0;
 
 export function bindRoom(next) {
   hooks = next;
+  // 八张赛道卡片**从 `MODES` 现渲染**：卡片上的名字、英文名、描述都只有一份真相。
+  // 放在绑定事件之前，因为下面 `[data-mode]` 的事件、`setHostUi` 的禁用、
+  // `syncModeCards` 的选中态——三处都按"卡片已经在那儿"来写。
+  renderModeCards();
   $("botStepper").querySelectorAll("[data-bot]").forEach(button => {
     button.addEventListener("click", () => {
       if (!isHost()) return;
@@ -59,6 +63,30 @@ export function bindRoom(next) {
     if (isHost()) hooks.onConfig?.({ joinLive: event.target.checked });
   });
   setHostUi(false);
+}
+
+/** 赛道卡片：八条路，一屏放下。描述只取前两段——**卡片是菜单，不是说明书**。 */
+function renderModeCards() {
+  const box = $("modeCards");
+  if (!box) return;
+  box.replaceChildren();
+  for (const m of Object.values(MODES)) {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "mode-card";
+    card.dataset.mode = m.id;
+    card.setAttribute("aria-pressed", "false");
+    card.title = m.desc;
+    const strong = document.createElement("strong");
+    strong.textContent = m.name;
+    const en = document.createElement("i");
+    en.textContent = m.sub;
+    strong.append(en);
+    const small = document.createElement("small");
+    small.textContent = m.desc.split(" · ").slice(0, 2).join(" · ");
+    card.append(strong, small);
+    box.append(card);
+  }
 }
 
 const isHost = () => !!(view && view.you && view.you.host);

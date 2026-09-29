@@ -13,8 +13,27 @@ import { LANE_W, SHOULDER_W, TAU } from "./constants.mjs";
 import { hash2 } from "./rng.mjs";
 import { MODES } from "./data.mjs";
 
-/** 路边道具的间距（米）。同一个槽位长什么东西由 (种子, 槽位号) 决定。 */
+/** 路边道具的默认间距（米）。同一个槽位长什么东西由 (种子, 槽位号) 决定。 */
 const PROP_STEP = 26;
+
+/**
+ * 权重表 → 前缀和。**一次算好，用几百次**：`propsBetween` 每帧要取几十个道具，
+ * 每个道具都去累加一遍权重是白花的；而这张表在一局里根本不会变。
+ */
+function prefix(table) {
+  const kinds = Object.keys(table);
+  const acc = [];
+  let sum = 0;
+  for (const k of kinds) { sum += table[k]; acc.push([sum, k]); }
+  return { total: sum, acc };
+}
+
+/** 按前缀和抽一个 kind：`r` 是 [0,1) 的随机数，越小越靠前。 */
+function pickPrefix(p, r) {
+  const target = r * p.total;
+  for (const [upto, kind] of p.acc) if (target < upto) return kind;
+  return p.acc[p.acc.length - 1][1];
+}
 
 export function createTrack({ seed = 1, mode = "city" } = {}) {
   const cfg = MODES[mode] || MODES.city;
@@ -22,12 +41,22 @@ export function createTrack({ seed = 1, mode = "city" } = {}) {
   const ph = [0, 1, 2, 3].map(i => hash2(seed, i + 1) * TAU);
   const halfWidth = cfg.lanes * LANE_W / 2;
   const hillL = cfg.lanes === 2 ? 260 : 340;
+  const propStep = cfg.propStep || PROP_STEP;
+  const scenery = prefix(cfg.scenery || { tree: 1 });
   return {
     seed, mode, lanes: cfg.lanes, length: cfg.length,
     halfWidth, shoulder: SHOULDER_W,
     /** 整条路（含两侧路肩）的横向半宽——车的 |x| 不会超过它。 */
     limitX: halfWidth + SHOULDER_W - 0.6,
     sky: cfg.sky, ground: cfg.ground, trafficMs: cfg.trafficMs, dayunMs: cfg.dayunMs,
+    // 车流：两张权重表 + "对向来车占多少" + 同屏上限。`traffic.mjs` 直接读它们，
+    // 所以"这条路上跑什么车"和"这条路上有几台车"都是这张表的事。
+    same: cfg.same || { car: 1 }, oncom: cfg.oncom || { oncom: 1 },
+    oncomingShare: cfg.oncomingShare === undefined ? 0.34 : cfg.oncomingShare,
+    maxTraffic: cfg.maxTraffic || 9,
+    /** 路边道具的权重表（原样带出来，测试要按它验"这条路上长得出什么"）。 */
+    sceneryKinds: Object.keys(cfg.scenery || { tree: 1 }),
+    propStep,
 
     /** 曲率 κ(z)，单位 1/米。正数往左拐。 */
     curveAt: z => cfg.curveA * Math.sin(z / 240 + ph[0]) + cfg.curveB * Math.sin(z / 720 + ph[1]),
@@ -50,38 +79,24 @@ export function createTrack({ seed = 1, mode = "city" } = {}) {
      */
     propsBetween(z0, z1) {
       const out = [];
-      const first = Math.max(0, Math.floor(z0 / PROP_STEP));
-      const last = Math.max(0, Math.floor(z1 / PROP_STEP));
+      const first = Math.max(0, Math.floor(z0 / propStep));
+      const last = Math.max(0, Math.floor(z1 / propStep));
       for (let i = first; i <= last; i++) {
         const r = hash2(seed + 11, i);
-        const z = i * PROP_STEP + hash2(seed + 17, i) * PROP_STEP * 0.7;
+        const z = i * propStep + hash2(seed + 17, i) * propStep * 0.7;
         if (z < z0 || z > z1) continue;
         const side = hash2(seed + 23, i) < 0.5 ? -1 : 1;
         const gap = 2.2 + hash2(seed + 29, i) * 9;
         out.push({
           i, z, side,
           x: side * (halfWidth + SHOULDER_W + gap),
-          kind: propKind(cfg.ground, hash2(seed + 31, i)),
+          kind: pickPrefix(scenery, hash2(seed + 31, i)),
           s: 0.78 + hash2(seed + 37, i) * 0.5,
         });
       }
       return out;
     },
   };
-}
-
-/** 路边能长什么。城市里是路灯、招牌、行道树、楼；荒野里是树、石头、栅栏、路标。 */
-function propKind(ground, r) {
-  if (ground === "city") {
-    if (r < 0.30) return "lamp";
-    if (r < 0.55) return "tree";
-    if (r < 0.68) return "sign";
-    return "building";
-  }
-  if (r < 0.46) return "tree";
-  if (r < 0.70) return "rock";
-  if (r < 0.86) return "fence";
-  return "sign";
 }
 
 /** 起点/终点线所在的 z。起点是 0，终点是赛道长度。 */

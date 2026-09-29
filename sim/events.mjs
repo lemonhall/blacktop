@@ -25,7 +25,10 @@ export function cullEvents(w) {
 
 /** 一段事件流里最要紧的那条——相机抖动、音效、播报都按它决定强度。 */
 export function loudest(events) {
-  const rank = { fling: 5, wreck: 4, finish: 3, dayun: 3, hit: 2, nitro: 1, whiff: 0, go: 2 };
+  const rank = {
+    fling: 5, beast: 5, boom: 4, wreck: 4, moo: 3, finish: 3, dayun: 3,
+    hit: 2, nitro: 1, whiff: 0, go: 2,
+  };
   let best = null, bestRank = -1;
   for (const ev of events) {
     const r = rank[ev.k] === undefined ? -1 : rank[ev.k];

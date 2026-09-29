@@ -11,6 +11,7 @@
  */
 
 import { KMH } from "./constants.mjs";
+import { WEAPONS, weaponIndex } from "./weapons.mjs";
 
 const r1 = v => Math.round(v * 10) / 10;
 const r2 = v => Math.round(v * 100) / 100;
@@ -90,6 +91,10 @@ export function encodeSnapshot(w, selfId, sentAt = 0) {
     tm: r3(w.time), wt: sentAt, cd: r2(Math.max(0, w.countdown)),
     r: w.racers.map(r => racerWire(r, r.id === selfId)),
     tr: w.traffic.map(trafficWire),
+    // 畜生和车流分开一段：它们数量少、走得慢，但**必须一起发**——一头牛横穿
+    // 马路这件事如果只在服务端成立，玩家就会在画面上"凭空撞到空气"。
+    cr: (w.critters || []).map(critterWire),
+    pk: (w.pickups || []).map(pickupWire),
     ev: w.events,
   };
   return out;
@@ -103,9 +108,14 @@ function racerWire(r, mine) {
     nc: r2(r.nitroCd),
     sm: Math.round(r.stamina),
     rk: r.rank || 0, fi: r.finished ? 1 : 0, ft: r.finished ? r3(r.finishTime) : 0,
-    d: r.downs, dy: r.dayuns, cr: r.crashes, ca: r.cash,
+    d: r.downs, kl: r.kills, cr: r.crashes, ca: r.cash,
     wb: r1(r.wobble), sk: r.state === "wreck" ? r.wreckKind : "",
   };
+  // 家伙只在真有时才发：空手是最常见的状态，十五台车每帧各背一个空数组纯属浪费。
+  if (r.belt && r.belt.length) {
+    out.wp = r.belt.map(b => [WEAPONS[b.i].id, b.charges | 0]);
+    out.wi = r.wi | 0;
+  }
   if (mine) {
     // 权威确认点：客户端从这里出发、把待确认命令重放一遍，算出"我此刻应该在哪"。
     out.ak = r.ack | 0;
@@ -118,6 +128,18 @@ function racerWire(r, mine) {
   return out;
 }
 
+/**
+ * 地上的家伙。和车流一样是**定长数组**：谁都不用为它维护名字表，
+ * 因为 `i` 只发给渲染层看，判定全在服务端做完。
+ */
+function pickupWire(p) {
+  return [WEAPONS[p.i].id, r1(p.x), r1(p.z), p.charges | 0];
+}
+
+export function decodePickups(arr) {
+  return (arr || []).map(([id, x, z, charges]) => ({ i: weaponIndex(id), x, z, charges: charges | 0 }));
+}
+
 const TRAFFIC_STATE = { run: 1, flung: 2 };
 const TRAFFIC_STATE_BACK = ["", "run", "flung"];
 
@@ -125,12 +147,40 @@ function trafficWire(v) {
   return [
     v.id, v.kind, r1(v.x), r1(v.z), v.dir,
     TRAFFIC_STATE[v.state] || 1, r1(v.y || 0), r2(v.spin || 0), r1(v.v * KMH),
+    // `dmg` 是"被踹瘪了多少"（0~1）。它必须走线协议：两台机器上同一台车
+    // 瘪得不一样，比不瘪更糟——那是"我的画面坏了"，不是"这游戏有物理"。
+    r2(v.dmg || 0),
   ];
 }
 
 export function decodeTraffic(arr) {
-  const [id, kind, x, z, dir, state, y, spin, kmh] = arr;
-  return { id, kind, x, z, dir, state: TRAFFIC_STATE_BACK[state] || "run", y, spin, v: kmh / KMH };
+  const [id, kind, x, z, dir, state, y, spin, kmh, dmg] = arr;
+  return {
+    id, kind, x, z, dir, state: TRAFFIC_STATE_BACK[state] || "run",
+    y, spin, v: kmh / KMH, dmg: dmg || 0,
+  };
+}
+
+/**
+ * 动物：和车流一样的定长数组，但状态名不一样（走 / 被踹飞）。
+ * 两张状态表分开写是有原因的：它们**编码到同一个数字**（1 = 正常），所以服务端
+ * 的解码表要往回翻成 `"walk"`，而客户端的渲染层认的正是这个词。
+ */
+const CRITTER_STATE = { walk: 1, flung: 2 };
+const CRITTER_STATE_BACK = ["", "walk", "flung"];
+
+function critterWire(c) {
+  return [
+    c.id, c.kind, r1(c.x), r1(c.z), c.dir,
+    CRITTER_STATE[c.state] || 1, r1(c.y || 0), r2(c.spin || 0), r1(c.v * KMH),
+  ];
+}
+
+export function decodeCritters(arr) {
+  return (arr || []).map(row => {
+    const [id, kind, x, z, dir, state, y, spin, kmh] = row;
+    return { id, kind, x, z, dir, state: CRITTER_STATE_BACK[state] || "walk", y, spin, v: kmh / KMH };
+  });
 }
 
 /** 客户端把快照里的车手还原成渲染层好用的对象（名册补上名字与配色）。 */
@@ -142,9 +192,15 @@ export function decodeRacer(wire, roster) {
     x: wire.x, z: wire.z, v: wire.v / KMH, kmh: wire.v,
     state: wire.st ? "ride" : "wreck", wreck: wire.wk, wreckKind: wire.sk || "",
     lean: wire.ln, swing: wire.sw, nitro: !!wire.nl, nitroCd: wire.nc || 0, stamina: wire.sm,
+    belt: decodeBelt(wire.wp), wi: wire.wi | 0,
     rank: wire.rk, finished: !!wire.fi, finishTime: wire.ft,
-    downs: wire.d, dayuns: wire.dy, crashes: wire.cr, cash: wire.ca, wobble: wire.wb,
+    downs: wire.d, kills: wire.kl, crashes: wire.cr, cash: wire.ca, wobble: wire.wb,
     ack: wire.ak | 0, ackZ: wire.az, ackX: wire.ax, queued: wire.q | 0,
     ackV: wire.av, ackLat: wire.alt,
   };
 }
+
+/** `[["chain",0],["mace",7]]` → 内部用的 `[{ i, charges }]`。 */
+const decodeBelt = wp => (wp || [])
+  .map(([id, charges]) => ({ i: weaponIndex(id), charges: charges | 0 }))
+  .filter(b => b.i > 0);

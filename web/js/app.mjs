@@ -58,10 +58,11 @@ function tickArena(delta, now) {
   const me = S.predictMe;
   if (me) {
     const controls = readControls(S);
-    // `act` 是待发出的攻击位（1 前打 / 2 回身打）。它同时喂给本地预测与画面：
-    // 判定在服务端，但"我的胳膊什么时候出去"必须本帧就有反应，否则每一下都慢半拍。
+    // `act` 是待发出的动作位（1 前打 / 2 回身打 / 4 换家伙）。它同时喂给本地预测
+    // 与画面：判定在服务端，但"我的胳膊什么时候出去"必须本帧就有反应，否则每一下
+    // 都慢半拍。换家伙不算挥拳——只按下 Q 的时候，胳膊不该跟着甩一下。
     const act = S.actions | 0;
-    if (act && S.countdown <= 0) { S.swing = 0.32; S.swingBack = (act & 2) !== 0; }
+    if ((act & 3) && S.countdown <= 0) { S.swing = 0.32; S.swingBack = (act & 2) !== 0; }
     const cmd = frameInput(now, controls);
     state.acc = Math.min(state.acc + delta, DT * MAX_TICKS_PER_FRAME);
     let guard = 0;

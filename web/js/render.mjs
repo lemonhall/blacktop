@@ -9,9 +9,14 @@
 import { FX, S } from "./state.mjs";
 import { backdrop } from "./sky.mjs";
 import { buildSlices, createCamera, drawRoad, occluded, project, tonesOf } from "./road.mjs";
+import { drawCritter } from "./critters.mjs";
 import { drawRider } from "./sprites.mjs";
 import { drawVehicle } from "./vehicles.mjs";
+import { CAR_NAME } from "./fx.mjs";
 import { PROP_SIZE, drawBuilding, propImage } from "./props.mjs";
+import { WEAPONS } from "/sim/weapons.mjs";
+import { drawPickup } from "./weaponsart.mjs";
+import { CRITTERS } from "/sim/critters.mjs";
 
 export function renderGame(ctx, view) {
   if (!view || !S.track) return;
@@ -25,7 +30,9 @@ export function renderGame(ctx, view) {
   if (S.shake > 0.05) {
     ctx.translate((Math.random() - 0.5) * S.shake, (Math.random() - 0.5) * S.shake);
   }
-  const sky = backdrop(S.mode, W, Math.ceil(cam.horizon) + 2, cam.horizon);
+  // 天色读的是**赛道**（`maps.mjs` 里的 `sky`），不是房间里的模式名：
+  // 一条路的天和地是一对，分开写迟早会出现"沙漠上挂着红杉林的天"。
+  const sky = backdrop(S.track.sky || S.mode, W, Math.ceil(cam.horizon) + 2, cam.horizon);
   ctx.drawImage(sky, 0, 0);
   ctx.fillStyle = tone.shoulder[0];
   ctx.fillRect(0, cam.horizon - 1, W, H - cam.horizon + 1);
@@ -86,14 +93,29 @@ function drawWorld(ctx, cam, tbl, view) {
   for (const prop of S.track.propsBetween(cam.camZ - 8, far)) {
     queue.push({ z: prop.z, kind: "prop", item: prop });
   }
+  // 地上的家伙和道具走同一条排队规则：按 z 从远到近。它们躺在路面上，
+  // 所以谁在谁前面、谁挡着谁，全靠这一条。
+  for (const p of view.pickups || []) queue.push({ z: p.z, kind: "pickup", item: p });
   for (const v of view.traffic) queue.push({ z: v.z, kind: "traffic", item: v });
+  for (const c of view.critters || []) queue.push({ z: c.z, kind: "critter", item: c });
   for (const r of view.racers) queue.push({ z: r.z, kind: "racer", item: r });
   queue.sort((a, b) => b.z - a.z);
   for (const entry of queue) {
     if (entry.kind === "prop") drawProp(ctx, cam, tbl, entry.item);
+    else if (entry.kind === "pickup") drawGroundWeapon(ctx, cam, tbl, entry.item);
     else if (entry.kind === "traffic") drawTraffic(ctx, cam, tbl, entry.item);
+    else if (entry.kind === "critter") drawCritterSprite(ctx, cam, tbl, entry.item);
     else drawRacerSprite(ctx, cam, tbl, entry.item, view);
   }
+}
+
+/** 躺在地上的家伙。和车一样走投影，所以它会随距离缩小、也会被地形挡住。 */
+function drawGroundWeapon(ctx, cam, tbl, p) {
+  const spec = WEAPONS[p.i];
+  if (!spec) return;
+  const q = project(cam, tbl, p.x, S.track.hillAt(p.z), p.z);
+  if (!q || q.ppm < 0.06) return;
+  drawPickup(ctx, q.sx, q.sy, q.ppm * 0.9, spec.id, p.charges);
 }
 
 function drawProp(ctx, cam, tbl, prop) {
@@ -106,13 +128,22 @@ function drawProp(ctx, cam, tbl, prop) {
   if (!p || p.ppm < 0.02) return;
   const w = size[0] * prop.s * p.ppm, h = size[1] * prop.s * p.ppm;
   if (p.sx + w < -40 || p.sx - w > cam.W + 40 || h < 2) return;
+  // 大气透视：远处的东西往天色里化。没有这一步，两百米外的树和眼前的树一样黑，
+  // 画面就是一张平贴的贴纸——这是伪 3D 里最便宜也最有效的一笔纵深感。
+  const fogK = Math.max(0, Math.min(1, (prop.z - cam.camZ - 70) / 500));
   if (prop.kind === "building") {
-    const tone = S.mode === "wild" ? "#8a8479" : "#2c2f3f";
-    drawBuilding(ctx, { sx: p.sx, baseY: p.sy, s: p.ppm * prop.s, seed: prop.i, width: size[0], height: size[1], tone });
+    // 墙身本色来自这条路的地面配色——八条路各有各的楼，以前只有城市和荒野两种。
+    const tone = tonesOf(track.ground).building;
+    drawBuilding(ctx, {
+      sx: p.sx, baseY: p.sy, s: p.ppm * prop.s, seed: prop.i,
+      width: size[0], height: size[1], tone, hazeK: fogK, ground: track.ground,
+    });
     return;
   }
   const img = propImage(track.ground, prop.kind);
+  ctx.globalAlpha = 1 - fogK * 0.55;
   ctx.drawImage(img, p.sx - w / 2, p.sy - h, w, h);
+  ctx.globalAlpha = 1;
 }
 
 function drawTraffic(ctx, cam, tbl, v) {
@@ -123,11 +154,30 @@ function drawTraffic(ctx, cam, tbl, v) {
   drawVehicle(ctx, {
     cx: p.sx, baseY: p.sy, s: p.ppm, kind: v.kind, id: v.id,
     dir: v.dir, spin: v.spin, air: v.y > 0.05 ? v.y : 0,
+    // 被踹过的车会瘪：`dmg` 不传进去，这一脚在画面上就白踹了。
+    dmg: v.dmg || 0,
   });
-  // 大运是这一局的笑点，值得头顶挂一行字——只在近处挂，远了反而乱。
-  if (v.kind === "dayun" && p.ppm > 1.1 && v.state === "flung") {
-    label(ctx, p.sx, p.sy - 5.2 * p.ppm, "大运起飞!", "#ffd23f", 1.05 * p.ppm);
+  // 飞在天上的车值得头顶挂一行字——只在近处挂，远了反而乱。
+  if (p.ppm > 1.1 && v.state === "flung") {
+    const name = CAR_NAME[v.kind] || "车";
+    label(ctx, p.sx, p.sy - 5.2 * p.ppm, `${name}起飞!`, "#ffd23f", 1.05 * p.ppm);
   }
+}
+
+/**
+ * 一头畜生。它躺在路面上，所以只做投影、不做遮挡判定——被踹飞的牛也不该
+ * 突然消失在一根电线杆后面。尺寸从 `sim/critters.mjs` 取，画多宽就是撞多宽。
+ */
+function drawCritterSprite(ctx, cam, tbl, c) {
+  const info = CRITTERS[c.kind];
+  if (!info) return;
+  const ground = S.track.hillAt(c.z);
+  const p = project(cam, tbl, c.x, ground, c.z);
+  if (!p || p.ppm < 0.05) return;
+  drawCritter(ctx, {
+    cx: p.sx, baseY: p.sy, s: p.ppm, kind: c.kind, dir: c.dir,
+    spin: c.spin, air: c.y > 0.05 ? c.y : 0, w: info.len, h: info.h,
+  });
 }
 
 function drawRacerSprite(ctx, cam, tbl, r, view) {
@@ -137,25 +187,26 @@ function drawRacerSprite(ctx, cam, tbl, r, view) {
   if (!p || p.ppm < 0.05) return;
   const me = r.id === (view.mine ? view.mine.id : -1);
   const swing = me && S.swing > 0 ? Math.max(r.swing, S.swing) : r.swing;
+  const held = r.belt && r.belt.length ? r.belt[r.wi | 0] || r.belt[0] : null;
+  const weapon = held && WEAPONS[held.i] ? WEAPONS[held.i].id : "";
   // 出拳方向只有我自己这一台能画准：快照里的 `sw` 只带"还剩多久"，回身打的那一
   // 下只有本机知道。别人的胳膊一律按前打画——反正镜头在自己车后面，看不出来。
   const swingBack = me && S.swing > 0 && S.swingBack;
   drawRider(ctx, {
     cx: p.sx, baseY: p.sy, s: p.ppm, palette: r.palette,
     lean: r.lean, swing, swingBack, wreck: r.state === "wreck" ? Math.max(0.2, r.wreck) : 0,
-    nitro: r.nitro, flameSeed: r.id,
+    nitro: r.nitro, flameSeed: r.id, weapon,
   });
-  if (me) {
-    // 自己脚下的一圈光环：15 台车挤在一起时，"哪个是我"必须一眼看得见。
-    ctx.strokeStyle = "rgba(110,240,255,.75)";
-    ctx.lineWidth = Math.max(1, p.ppm * 0.05);
-    ctx.beginPath();
-    ctx.ellipse(p.sx, p.sy, p.ppm * 0.95, p.ppm * 0.28, 0, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-  // 只有真人挂名字：14 个机器人全挂上就成了一片文字墙。
-  if (r.kind === "human" && !me && p.ppm > 0.35) {
-    label(ctx, p.sx, p.sy - 2.9 * p.ppm, r.name, "#dfe8ff", Math.min(15, 0.55 * p.ppm + 8));
+  /*
+   * 头顶挂名字：只有真人挂——14 个机器人全挂上就成了一片文字墙。
+   *
+   * **自己这一台也挂，而且是琥珀色**：这就是"哪个是我"的全部答案。上一版给自己
+   * 脚下画过一圈青色光环，那是科幻片的语言，1996 年那条公路上没有这种东西——
+   * 它和那个圆角矩形的 HUD 是同一类毛病：一眼看去就不像是这台车身上的。
+   */
+  if ((r.kind === "human" || me) && p.ppm > 0.3) {
+    label(ctx, p.sx, p.sy - 2.9 * p.ppm, r.name, me ? "#ffd88a" : "#dfe8ff",
+      Math.min(15, 0.55 * p.ppm + 8));
   }
 }
 
@@ -193,7 +244,9 @@ function drawOverlays(ctx, view, cam) {
   }
   const vig = ctx.createRadialGradient(W / 2, H * 0.52, H * 0.3, W / 2, H * 0.5, H * 0.95);
   vig.addColorStop(0, "rgba(0,0,0,0)");
-  vig.addColorStop(1, "rgba(0,0,0,.5)");
+  // 暗角是"把视线压回路面"的一招，但 0.5 会把荒野正午的四角直接压成黑橄榄色
+  // （拿像素探针量过：路面 #565550 不变、路肩 #8c7c56 被压成 #453e28）。
+  vig.addColorStop(1, "rgba(0,0,0,.44)");
   ctx.fillStyle = vig;
   ctx.fillRect(0, 0, W, H);
 

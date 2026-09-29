@@ -10,7 +10,10 @@
 import { clamp, KMH } from "./constants.mjs";
 import { BIKES } from "./data.mjs";
 import { resetQueue } from "./netcode.mjs";
+import { spillBelt, stealWeapon, takePickup } from "./pickups.mjs";
 import { VEHICLES, fling, kickTarget } from "./traffic.mjs";
+import { CRITTERS, critterTarget, flingCritter, hitCritter } from "./critters.mjs";
+import { WEAPONS, cycleWeapon, heldWeapon, spendCharge } from "./weapons.mjs";
 
 export const STAMINA_MAX = 100;
 export const NITRO_TIME = 2.4;
@@ -46,7 +49,8 @@ export function newRacer(w, { id, kind, ownerId, name, bike = 0, palette = 0, sk
     x: grid.x, z: grid.z, v: 0, lat: 0, lean: 0, wobble: 0,
     stamina: STAMINA_MAX, state: "ride", wreck: 0, wreckKind: "",
     attackCd: 0, hitCd: 0, swing: 0, nitroT: 0, nitroCd: 0,
-    lastHit: -99, downs: 0, dayuns: 0, crashes: 0, topV: 0, cash: 0,
+    belt: [], wi: 0,
+    lastHit: -99, downs: 0, kills: 0, crashes: 0, topV: 0, cash: 0,
     finished: false, finishTime: 0, rank: 0, kmh: 0,
   };
   resetQueue(r);
@@ -100,11 +104,14 @@ export function stepRacer(w, r, dt, input = {}) {
   if (w.time - r.lastHit > TUNE.regenDelay) {
     r.stamina = Math.min(STAMINA_MAX, r.stamina + TUNE.regen * dt);
   }
-  // 攻击位：bit1 = 正前方一拳，bit2 = 回身一拳。两个都按着也只出一拳——原版
-  // 一挥手就只挥一次，共用同一个冷却。
+  // 动作位：bit1 = 正前方一拳，bit2 = 回身一拳，bit4 = 换家伙。
+  // 换家伙放在挥拳**之前**——举对了再打，不然"按键那一格"会白挥。
+  // bit1 与 bit2 同时按着也只出一拳：原版一挥手就只挥一次，共用同一个冷却。
+  if (input.act & 4) cycleWeapon(r, 1);
   if (input.act & 1) attack(w, r, 1);
   else if (input.act & 2) attack(w, r, -1);
 
+  takePickup(w, r);
   collideTraffic(w, r) || bump(w, r);
   r.kmh = r.v * KMH;
   return r;
@@ -137,37 +144,77 @@ function stepWreck(w, r, dt) {
  *
  * `dir` 是出手方向：`+1` 正前方、`-1` 回身。这一层**只有两个方向、没有招式**，
  * 因为原版就是这样的：空手是拳，捡到家伙是武器，区别在够多远，不在按哪几个键。
+ *
+ * 手里举着哪一件由 `spec` 说了算：**够得多远（reach）、打得多疼（dmg）、挥得多快
+ * （cd）、把人推多开（pull）**四件事全部来自那张表。空手也走同一条路径，只是
+ * 取到的是空手那一行——所以"有没有家伙"在这段代码里不是分支，是数据。
  */
 export function attack(w, r, dir = 1) {
   if (r.attackCd > 0 || r.state !== "ride") return false;
-  r.attackCd = TUNE.attackCd;
+  const held = heldWeapon(r);
+  const spec = held ? WEAPONS[held.i] || WEAPONS[0] : WEAPONS[0];
+  r.attackCd = TUNE.attackCd * spec.cd;
   r.swing = TUNE.swing;
   r.stamina = Math.max(0, r.stamina - TUNE.attackCost);
 
-  // 大运当前：只有**正前方**那一拳能踢。回头踢飞一辆迎面而来的大运没有道理，
-  // 而且那会让"什么时候回头"变成没有代价的选择。
+  // 充能的家伙挥一次少一次。用光当场丢掉并喊一声——不喊的话，玩家只会觉得
+  // "这一下怎么没伤害"，而不知道手里的油桶已经空了。
+  if (held && spec.charges > 0) {
+    const spent = spendCharge(r);
+    if (spent) w.events.push({ k: "spent", a: r.id, w: spent.id, z: r.z, x: r.x });
+  }
+
+  // 社会车辆：只有**正前方**那一拳能踹，但踹得动的是路上的每一台——大运、公交、
+  // 三轮车都算。回头踹一辆迎面而来的大运没有道理，而且那会让"什么时候回头"
+  // 变成没有代价的选择。
+  //
+  // 赏金写在车型表里（`traffic.mjs` 的 `cash`）：踹飞一台三轮车和踹飞一台油罐车
+  // 不该是一个价，而"这一脚值多少"是调平衡，不该出现在这段代码里。
   if (dir > 0) {
-    const truck = kickTarget(w, r);
-    if (truck && fling(w, truck, Math.sign(truck.x - r.x) || 1)) {
-      r.dayuns++;
-      r.cash += 1500;
+    const car = kickTarget(w, r);
+    // 畜生优先于车流：一头牛站在路中间的时候，你那一脚本来就是冲它去的——
+    // 只有"车更近"的时候才让车抢在前面。
+    const beast = critterTarget(w, r);
+    const useBeast = beast && (!car || beast.z < car.z);
+    if (useBeast && flingCritter(w, beast, Math.sign(beast.x - r.x) || 1)) {
+      const info = CRITTERS[beast.kind] || CRITTERS.cow;
+      r.kills++;
+      r.cash += info.cash;
+      r.stamina = Math.min(STAMINA_MAX, r.stamina + 30);
+      w.events.push({
+        k: "beast", a: r.id, kind: beast.kind, n: info.name, pay: info.cash,
+        z: beast.z, x: beast.x,
+      });
+      return true;
+    }
+    const cash = car ? (VEHICLES[car.kind] || {}).cash || 400 : 0;
+    if (car && fling(w, car, Math.sign(car.x - r.x) || 1)) {
+      r.kills++;
+      r.cash += cash;
       r.stamina = Math.min(STAMINA_MAX, r.stamina + 22);
-      w.events.push({ k: "fling", a: r.id, z: truck.z, x: truck.x, w: r.x });
+      w.events.push({ k: "fling", a: r.id, kind: car.kind, pay: cash, z: car.z, x: car.x, w: r.x });
       return true;
     }
   }
 
-  const target = punchTarget(w, r, dir);
+  const target = punchTarget(w, r, dir, spec.reach);
   if (!target) {
     w.events.push({ k: "whiff", a: r.id, z: r.z, x: r.x, dir });
     return false;
   }
-  const dmg = (TUNE.punchDmg + r.v * 0.12) * (1.15 / specOf(target).mass) * (dir > 0 ? 1 : TUNE.backDmg);
+  const dmg = (TUNE.punchDmg + r.v * 0.12) * (1.15 / specOf(target).mass)
+    * spec.dmg * (dir > 0 ? 1 : TUNE.backDmg);
   target.stamina -= dmg;
   target.lastHit = w.time;
-  target.lat += Math.sign(target.x - r.x || 1) * 4.4;
+  target.lat += Math.sign(target.x - r.x || 1) * spec.pull;
   target.wobble = 1;
-  w.events.push({ k: "hit", a: r.id, b: target.id, z: target.z, x: target.x, d: Math.round(dmg), dir });
+  w.events.push({
+    k: "hit", a: r.id, b: target.id, z: target.z, x: target.x,
+    d: Math.round(dmg), dir, w: spec.id,
+  });
+  // 抢家伙：判在"他倒不倒下"之前。那一下要是把他打下车了，也该是你手里多一件，
+  // 而不是两个人一起丢掉。
+  if (target.swing > 0 && target.belt && target.belt.length) stealWeapon(w, r, target);
   if (target.stamina <= 0) {
     if (wreck(w, target, { kind: "down", by: r.id })) r.downs++;
   }
@@ -182,10 +229,11 @@ export function attack(w, r, dir = 1) {
  * 优先打正前方的人，回身打优先打身后的人；另一侧的人只是"够得着但不好打"，
  * 记分按 1.6 倍折算，所以它永远不会抢在前面那个人之前被选中。
  */
-function punchTarget(w, r, dir = 1) {
+function punchTarget(w, r, dir = 1, reachAdd = 0) {
   const front = dir > 0;
-  const lo = front ? -TUNE.reachSide : -TUNE.reachBack;
-  const hi = front ? TUNE.reachFront : TUNE.reachSide;
+  // 家伙把够得着的窗口**两头都拉长**：手里多一件，就等于往前多伸出去一截。
+  const lo = front ? -TUNE.reachSide : -(TUNE.reachBack + reachAdd);
+  const hi = front ? TUNE.reachFront + reachAdd : TUNE.reachSide;
   let best = null, bestScore = Infinity;
   for (const o of w.racers) {
     if (o === r || o.state === "wreck") continue;
@@ -203,14 +251,33 @@ function punchTarget(w, r, dir = 1) {
 /** 撞车：撞上就跑不掉。对向 / 重卡额外加时——速度差是伤害的一部分。 */
 function collideTraffic(w, r) {
   if (r.hitCd > 0) return false;
+  // 先看畜生：一头牛比一台轿车小得多，但在路上它是**必须**被看见的东西。
+  // 低速（30 km/h 以下）只是晃一下、掉点速；上了速度就是当年那个结局：人车两空。
+  const beast = hitCritter(w, r);
+  if (beast) {
+    const info = CRITTERS[beast.kind] || CRITTERS.cow;
+    if (r.v * 3.6 < 30) {
+      r.hitCd = 0.9;
+      r.v *= 0.55;
+      r.lat += Math.sign(r.x - beast.x || 1) * 2.4;
+      r.wobble = 1;
+      w.events.push({ k: "moo", a: r.id, n: info.name, z: beast.z, x: beast.x, soft: 1 });
+    } else {
+      r.hitCd = 1.1;
+      w.events.push({ k: "moo", a: r.id, n: info.name, z: beast.z, x: beast.x });
+      wreck(w, r, { kind: "critter", heavy: info.len > 1.8 });
+    }
+    return true;
+  }
   for (const v of w.traffic) {
     if (v.state !== "run") continue;
     const info = VEHICLES[v.kind];
     if (Math.abs(v.z - r.z) > (info.len + 2.2) * 0.5) continue;
     if (Math.abs(v.x - r.x) > info.wid * 0.5 + 0.55) continue;
-    // 伤害来自**速度差**：迎面撞上的（对面车、大运、重卡）比追尾狠得多。
-    // 这条不是为了惩罚，而是为了让"贴着对向车道超车"这件事真的需要胆量。
-    const heavy = v.dir === -1 || v.kind === "dayun" || v.kind === "truck";
+    // 伤害来自**速度差**：迎面撞上的、以及对上重车（mass ≥ 2 的半挂、公交、油罐）
+    // 比追尾一台小轿车狠得多。这条不是为了惩罚，而是为了让"贴着对向车道超车"
+    // 这件事真的需要胆量。判据取质量而不是车型白名单——加一种大车不用改这里。
+    const heavy = v.dir === -1 || info.mass >= 2;
     r.hitCd = 1.1;
     wreck(w, r, { kind: v.dir === -1 ? "headon" : "rear", heavy });
     return true;
@@ -244,6 +311,9 @@ export function wreck(w, r, { kind = "crash", by = 0, heavy = false } = {}) {
   r.crashes++;
   r.stamina = 0;
   r.lat += Math.sign(r.x || 1) * 5.2;
+  // 手里的家伙全甩到路上。痛，但从这一刻起这条路多了一份补给——谁先扶起车
+  // 谁就能捡回去，所以"摔了"和"白摔"之间还有一层取舍。
+  spillBelt(w, r);
   // 躺得久的人也应该掉得更狠：否则"重摔"就只是画面上多躺一秒。
   r.v *= heavy ? 0.2 : 0.42;
   r.lean = 0;

@@ -6,6 +6,7 @@
  */
 
 import { clock1 } from "/sim/constants.mjs";
+import { MODES } from "/sim/data.mjs";
 import { prizeOf } from "./payout.mjs";
 import { S } from "./state.mjs";
 
@@ -20,17 +21,19 @@ export function showResults(results) {
   $("resultRank").style.color = win ? "#ffd23f" : rank <= 3 ? "#7cf7a0" : "#edb0ba";
   $("resultTitle").textContent = win ? "第一个冲线。" : rank <= 3 ? "上领奖台了。" : "再练练那条弯。";
   $("resultDescription").textContent = win
-    ? "这条路今晚归你。赏金、名次、还有那一脚踢飞大运的画面，都记在战绩里了。"
+    ? "这条路今晚归你。赏金、名次、还有那一脚把半挂踹上天的画面，都记在战绩里了。"
     : rank <= 3 ? "名次是有的，赏金也是有的——差的是第一个冲线的那一下。"
-      : "撞车、摔车、被大运顶回来，都是这条路的一部分。换台车试试。";
+      : "撞车、摔车、被半挂顶回来，都是这条路的一部分。换台车试试。";
   $("resultTime").textContent = me && me.time !== null && me.time !== undefined ? clock1(me.time) : "未完赛";
   $("resultDowns").textContent = me ? me.downs : 0;
-  $("resultDayuns").textContent = me ? me.dayuns : 0;
+  $("resultKills").textContent = me ? me.kills : 0;
   $("resultCrashes").textContent = me ? me.crashes : 0;
   // 赏金的权威来源是 `results.payout`（见 `payout.mjs`），不是 `players[].cash`。
   $("resultPayout").textContent = money(me ? prizeOf(results, me.ownerId) : 0);
+  // 赛道名从表里取——上一版这里写着一个二元三目，于是八条路里有六条会被叫成"夜色环路"。
+  const mode = MODES[results.track];
   $("resultRecord").textContent =
-    `${results.track === "wild" ? "荒野公路" : "夜色环路"} · 全场 ${results.players.length} 台车`;
+    `${mode ? mode.name : results.track} · 全场 ${results.players.length} 台车`;
   standings(results, me);
   confetti(win);
   $("results").classList.remove("hidden");
@@ -59,7 +62,7 @@ function standings(results, me) {
       p.name,
       p.dnf ? "未完赛" : clock1(p.time || 0),
       String(p.downs),
-      String(p.dayuns),
+      String(p.kills),
       money(prizeOf(results, p.ownerId)),
     ];
     for (const text of cells) {

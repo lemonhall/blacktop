@@ -11,7 +11,7 @@
  */
 
 import { clamp, lerp } from "/sim/constants.mjs";
-import { decodeRacer, decodeTraffic } from "/sim/wire.mjs";
+import { decodeCritters, decodePickups, decodeRacer, decodeTraffic } from "/sim/wire.mjs";
 
 export const INTERP_DELAY = 0.14;
 
@@ -56,7 +56,7 @@ function blend(older, newer, t, keyOf, fields) {
 }
 
 const RACER_FIELDS = [["x", 1], ["z", 1], ["lean", 1], ["swing", 1], ["wreck", 1], ["wobble", 1]];
-const TRAFFIC_FIELDS = [["x", 1], ["z", 1], ["y", 1], ["spin", 1]];
+const TRAFFIC_FIELDS = [["x", 1], ["z", 1], ["y", 1], ["spin", 1], ["dmg", 1]];
 const idOf = e => (Array.isArray(e) ? e[0] : e.id);
 
 /**
@@ -79,6 +79,16 @@ export function buildView(S) {
     (newer.tr || []).map(decodeTraffic),
     t, idOf, TRAFFIC_FIELDS,
   );
+  // 动物也插值：一头牛从左边晃到右边是**慢动作**，不插值就会一格一格地跳。
+  const critters = blend(
+    decodeCritters(older.cr),
+    decodeCritters(newer.cr),
+    t, idOf, TRAFFIC_FIELDS,
+  );
+  // 地上的家伙**不插值**：它们是静止的，而且线格式里没有稳定的实体号（只发
+  // "是什么、在哪"）。挪动过的掉落本来就没有——所以直接取较新那一帧，最省事
+  // 也最准。
+  const pickups = decodePickups(newer.pk);
 
   const mine = racers.find(r => r.ownerId && r.ownerId === S.meId) || null;
   if (mine) {
@@ -100,7 +110,7 @@ export function buildView(S) {
   const finishZ = S.map.length;
   return {
     time: tm, tick: newer.tk, phase: newer.ph, countdown: newer.cd || 0,
-    racers, traffic, mine, leader, finishZ,
+    racers, traffic, critters, pickups, mine, leader, finishZ,
     myRank: mine ? mine.rank || 1 : 1,
     field: racers.length,
   };

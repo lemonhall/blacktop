@@ -142,7 +142,7 @@ test("迎面来的大运可以被踢飞：加钱、回体力、大运飞出去",
   assert.equal(truck.state, "flung", "大运被踢飞了");
   assert.ok(a.cash > cash, "踢飞要给钱");
   assert.ok(a.stamina > st, "踢飞要回一口气——不然这一脚没人愿意踢");
-  assert.equal(a.dayuns, 1);
+  assert.equal(a.kills, 1);
 });
 
 test("踢飞的大运会抛物线飞出去，两秒半之后消失", () => {

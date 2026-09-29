@@ -12,6 +12,7 @@
 
 import { TAU } from "/sim/constants.mjs";
 import { cosmeticRng } from "/sim/rng.mjs";
+import { WEAPONS } from "/sim/weapons.mjs";
 import { FX, S } from "./state.mjs";
 import { play } from "./audio.mjs";
 
@@ -85,6 +86,27 @@ export function consumeEvents(events, view) {
       case "whiff":
         if (ev.a === mine) play("whiff");
         break;
+      // 捡起一件：只有"是我捡的"才值得报——别人捡东西的消息十五台车会刷屏。
+      case "pick":
+        if (ev.a === mine) {
+          play("pick");
+          floater(ev.x, ev.z, 1.6, `+${weaponName(ev.w)}`, "#7cf7a0", true);
+        }
+        break;
+      // 抢：原版最经典的一下。抢到手的人一定要播报，被抢的人也得知道发生了什么。
+      case "steal":
+        feed(`${nameOf(view, ev.a)} 抢走了 ${nameOf(view, ev.b)} 的${weaponName(ev.w)}`, ev.a === mine ? "#7cf7a0" : "#ffb08a");
+        floater(ev.x, ev.z, 2.4, "抢!", ev.a === mine ? "#7cf7a0" : "#ff9f6a", true);
+        if (ev.a === mine) { play("steal"); announce("抢到手了", `${weaponName(ev.w)} · 按 Q 换`, "#7cf7a0"); }
+        else if (ev.b === mine) { play("steal", 0.7); S.shake = Math.min(18, S.shake + 8); }
+        break;
+      // 充能用尽：手里那件当场没了。
+      case "spent":
+        if (ev.a !== mine) break;
+        play("spent");
+        feed(`${weaponName(ev.w)} 用完了`, "#ffd23f");
+        floater(ev.x, ev.z, 2.2, "没了", "#ffd23f");
+        break;
       case "wreck": {
         burst(ev.x, ev.z, 0.9, "#ff8f5f", 18, 20, 0.2);
         smoke(ev.x, ev.z, 0.5, "rgba(210,205,200,.45)", 8, 0.8);
@@ -98,13 +120,55 @@ export function consumeEvents(events, view) {
         }
         break;
       }
-      case "fling":
+      // 一脚把一台社会车辆踹上天。**十三种车都走这一条**——大运只是赏金最高的那一台，
+      // 所以它才配一句播报，别的车就在头顶跳个钱数。
+      case "fling": {
+        const car = CAR_NAME[ev.kind] || "车";
         burst(ev.x, ev.z, 1.5, "#ffd23f", 26, 26, 0.24);
-        feed(`${nameOf(view, ev.a)} 一脚把大运踹上天`, "#ffd23f");
-        announce("大运起飞!", "这一脚值 1500", "#ffd23f");
+        burst(ev.x, ev.z, 0.9, "#ff9f5a", 12, 18, 0.18);
+        feed(`${nameOf(view, ev.a)} 一脚踹飞了一台${car}`, "#ffd23f");
+        floater(ev.x, ev.z, 2.7, `+${ev.pay || 0}`, "#ffd23f", ev.kind === "dayun");
+        if (ev.kind === "dayun") announce("大运起飞!", `这一脚值 ${ev.pay || 0}`, "#ffd23f");
         play("fling");
-        if (ev.a === mine) S.shake = Math.min(30, S.shake + 22);
+        if (ev.a === mine) S.shake = Math.min(30, S.shake + (ev.kind === "dayun" ? 22 : 14));
         break;
+      }
+      // 一脚把一头畜生踹上天。它是彩蛋，所以文案和音效都另给一套。
+      case "beast": {
+        burst(ev.x, ev.z, 1.2, "#f2e8d4", 18, 20, 0.2);
+        smoke(ev.x, ev.z, 0.7, "rgba(200,190,170,.4)", 4, 0.6);
+        feed(`${nameOf(view, ev.a)} 一脚踹飞一头${ev.n || "畜生"}`, "#ffe0a8");
+        floater(ev.x, ev.z, 2.3, `+${ev.pay || 0}`, "#ffe0a8", true);
+        if (ev.kind === "cow") announce("牛上天了", `这一脚值 ${ev.pay || 0}`, "#ffe0a8");
+        play("fling", 0.7); play("moo");
+        if (ev.a === mine) S.shake = Math.min(24, S.shake + 12);
+        break;
+      }
+      // 撞上一头走路的畜生：慢速只是晃一下（`soft`），上了速度就是一次摔车。
+      case "moo": {
+        const near = view && view.mine ? Math.abs(ev.z - view.mine.z) < 70 : false;
+        smoke(ev.x, ev.z, 0.6, "rgba(210,200,180,.42)", 5, 0.55);
+        if (ev.soft) {
+          feed(`撞上一头${ev.n || "畜生"} · 只是晃了一下`, "#ffd7a8");
+          if (ev.a === mine) { play("hurt"); S.shake = Math.min(12, S.shake + 6); }
+        } else {
+          burst(ev.x, ev.z, 0.8, "#e8b48a", 14, 16, 0.18);
+          feed(`${nameOf(view, ev.a)} 撞上了一头${ev.n || "畜生"}`, "#ffb08a");
+          if (near) play("moo", 0.8);
+        }
+        break;
+      }
+      // 被踹飞的那台车落地（或炸开）。这是"它真的完了"那一声。
+      case "boom": {
+        const b = ev.b || 1;
+        burst(ev.x, ev.z, 1.0, "#ffb24a", Math.round(18 + b * 14), 22 + b * 8, 0.26);
+        burst(ev.x, ev.z, 0.6, "#ff6a4a", Math.round(10 + b * 8), 16, 0.2);
+        smoke(ev.x, ev.z, 0.5, "rgba(48,44,42,.55)", Math.round(6 + b * 6), 0.9 + b * 0.4);
+        if (view && view.mine && Math.abs(ev.z - view.mine.z) < 120) {
+          play("boom"); S.shake = Math.min(28, S.shake + 8 + b * 5);
+        }
+        break;
+      }
       case "dayun":
         feed("前方有辆大运", "#ffd23f");
         break;
@@ -122,6 +186,19 @@ const nameOf = (view, id) => {
   if (view.mine && view.mine.id === id) return "你";
   const r = view.racers.find(x => x.id === id);
   return r ? r.name : "有人";
+};
+
+/** 车流的中文名。播报里说"踹飞一台重卡"比"踹飞一台 truck"强一百倍。 */
+export const CAR_NAME = {
+  car: "轿车", oncom: "来车", police: "警车", pickup: "皮卡", trike: "三轮车",
+  tractor: "拖拉机", van: "厢货", truck: "重卡", bus: "公交", container: "半挂",
+  tanker: "油罐车", mixer: "搅拌车", dayun: "大运",
+};
+
+/** 线协议里发的是家伙的名字（`"chain"`），这里翻成给玩家看的那两个字。 */
+const weaponName = id => {
+  const spec = WEAPONS.find(w => w.id === id);
+  return spec ? spec.name : "家伙";
 };
 
 /** 每帧推进粒子，顺带产出"车自己发出"的效果：侧滑、越野扬尘、氮气尾焰。 */

@@ -138,7 +138,9 @@ export class Room extends DurableObject {
     pushCmd(racer, {
       sq: Math.max(Math.floor(Number(msg.sq) || 0), (racer.ack | 0) + 1),
       th: dir.th, br: dir.br, st: dir.st,
-      act: (msg.act | 0) & 3,
+      // 动作位现在是三位：bit1 前打 / bit2 回身打 / bit4 换家伙。
+      // 这里少留一位的症状很隐蔽——按键不报错、不出手，只是"换不了家伙"。
+      act: (msg.act | 0) & 7,
       nos: dir.nos ? 1 : 0,
       n,
     }, now);

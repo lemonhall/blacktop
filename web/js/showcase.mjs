@@ -128,6 +128,8 @@ export function renderShowcase(now) {
   ctx.scale(1, 0.92);
   drawRider(ctx, {
     cx: 0, baseY: 0, s, palette,
+    // 号牌别写死：大厅里那台车就是玩家自己那台，牌上的数字要和他的配色对得上
+    number: palette * 3 + 1,
     lean: Math.sin(now * 0.7) * 0.16, swing: 0, wreck: 0,
     nitro: Math.sin(now * 2.2) > 0.86, flameSeed: 3,
   });
