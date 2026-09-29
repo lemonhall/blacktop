@@ -18,6 +18,7 @@ import { PROP_SIZE, drawBuilding, propBox, propImage } from "./props.mjs";
 import { WEAPONS } from "../../sim/weapons.mjs";
 import { drawPickup } from "./weaponsart.mjs";
 import { CRITTERS } from "../../sim/critters.mjs";
+import { drawSpeedLines, speedStrength } from "./speedlines.mjs";
 
 export function renderGame(ctx, view) {
   if (!view || !S.track) return;
@@ -236,26 +237,17 @@ function drawOverlays(ctx, view, cam) {
   const W = cam.W, H = cam.H;
   const me = view.mine;
   const speed = me ? Math.max(0, me.v) : 0;
-  if (speed > 14) {
-    const strength = Math.min(1, (speed - 14) / 26);
-    const n = Math.round(4 + strength * 9);
-    ctx.strokeStyle = `rgba(220,240,255,${0.06 + strength * 0.16})`;
-    ctx.lineWidth = 2;
-    for (let i = 0; i < n; i++) {
-      const side = i % 2 ? 1 : -1;
-      const y = cam.horizon + (i / n) * H * 0.72 + Math.sin(i * 2.7 + performance.now() / 220) * 12;
-      const len = H * (0.06 + strength * 0.14);
-      ctx.beginPath();
-      ctx.moveTo(W / 2 + side * W * 0.28, y);
-      ctx.lineTo(W / 2 + side * (W * 0.28 + len * 0.5), y + len);
-      ctx.stroke();
-    }
-  }
+  const strength = speedStrength(speed);
+  // 速度线是"景物在动"，不是"屏幕上有划痕"——所以它是**从消失点放射**的，
+  // 详见 `speedlines.mjs` 里那段说明。
+  drawSpeedLines(ctx, cam, speed, performance.now() / 1000);
   const vig = ctx.createRadialGradient(W / 2, H * 0.52, H * 0.3, W / 2, H * 0.5, H * 0.95);
   vig.addColorStop(0, "rgba(0,0,0,0)");
   // 暗角是"把视线压回路面"的一招，但 0.5 会把荒野正午的四角直接压成黑橄榄色
   // （拿像素探针量过：路面 #565550 不变、路肩 #8c7c56 被压成 #453e28）。
-  vig.addColorStop(1, "rgba(0,0,0,.44)");
+  // 满速时再收紧六分：高速的隧道感来自这里，不是来自线。只加这一点，
+  // 是因为上面那条量过的界线一动就要重画整个调色。
+  vig.addColorStop(1, `rgba(0,0,0,${(0.44 + strength * 0.06).toFixed(3)})`);
   ctx.fillStyle = vig;
   ctx.fillRect(0, 0, W, H);
 
