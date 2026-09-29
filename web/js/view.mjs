@@ -10,8 +10,8 @@
  * 数据到的那一刻又猛跳一段，看起来就是"机器人在放幻灯片"。
  */
 
-import { clamp, lerp } from "/sim/constants.mjs";
-import { decodeCritters, decodePickups, decodeRacer, decodeTraffic } from "/sim/wire.mjs";
+import { clamp, lerp } from "../../sim/constants.mjs";
+import { decodeCritters, decodePickups, decodeRacer, decodeTraffic } from "../../sim/wire.mjs";
 
 export const INTERP_DELAY = 0.14;
 

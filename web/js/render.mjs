@@ -14,9 +14,9 @@ import { drawRider } from "./sprites.mjs";
 import { drawVehicle } from "./vehicles.mjs";
 import { CAR_NAME } from "./fx.mjs";
 import { PROP_SIZE, drawBuilding, propImage } from "./props.mjs";
-import { WEAPONS } from "/sim/weapons.mjs";
+import { WEAPONS } from "../../sim/weapons.mjs";
 import { drawPickup } from "./weaponsart.mjs";
-import { CRITTERS } from "/sim/critters.mjs";
+import { CRITTERS } from "../../sim/critters.mjs";
 
 export function renderGame(ctx, view) {
   if (!view || !S.track) return;

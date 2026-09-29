@@ -11,8 +11,8 @@
  * 哪怕我这边已经切到赛道上了，也要乖乖切回候场——反过来就会两边不一致。
  */
 
-import { decodeMap, decodeRacer, mineIn } from "/sim/wire.mjs";
-import { createTrack } from "/sim/track.mjs";
+import { decodeMap, decodeRacer, mineIn } from "../../sim/wire.mjs";
+import { createTrack } from "../../sim/track.mjs";
 import { S } from "./state.mjs";
 import { openSocket, startPing } from "./net.mjs";
 import { ensureSession, refresh, notice } from "./rooms.mjs";

@@ -7,7 +7,7 @@
  * 否则"踢掉那个一直不举手的人"只能凭印象。
  */
 
-import { BIKES } from "/sim/data.mjs";
+import { BIKES } from "../../sim/data.mjs";
 import { drawPortrait } from "./showcase.mjs";
 
 const $ = id => document.getElementById(id);

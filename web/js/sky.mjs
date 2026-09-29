@@ -8,7 +8,7 @@
  * 上一版是"城市走 dusk、荒野走 noon、别的都走 dusk"，于是第三条路就露馅了。
  */
 
-import { hash2 } from "/sim/rng.mjs";
+import { hash2 } from "../../sim/rng.mjs";
 import { BY_MODE, PALETTES } from "./skies.mjs";
 
 const cache = new Map();

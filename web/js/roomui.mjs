@@ -9,7 +9,7 @@
  * 三种取舍（极速 / 起步 / 抗撞），正好占据同一个位置。
  */
 
-import { BIKES, DIFFICULTIES, MODES } from "/sim/data.mjs";
+import { BIKES, DIFFICULTIES, MODES } from "../../sim/data.mjs";
 import { renderRoster } from "./roster.mjs";
 import { S } from "./state.mjs";
 

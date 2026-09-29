@@ -5,8 +5,8 @@
  * 唯一写在本地的是"我"的那点小心情——赢了放彩带，输了说句实话。
  */
 
-import { clock1 } from "/sim/constants.mjs";
-import { MODES } from "/sim/data.mjs";
+import { clock1 } from "../../sim/constants.mjs";
+import { MODES } from "../../sim/data.mjs";
 import { prizeOf } from "./payout.mjs";
 import { S } from "./state.mjs";
 

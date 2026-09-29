@@ -61,7 +61,19 @@ const kindsOf = mode => CRITTERS_BY_MODE[mode] || CRITTERS_BY_MODE.wild;
 export function spawnCritters(w, leadZ) {
   const seed = w.matchSeed || w.seed || 1;
   const from = Math.max(0, Math.floor((w.critterCursor || 0) / SLOT));
-  const upto = Math.floor((leadZ + AHEAD_CULL) / SLOT);
+  /*
+   * 只处理**整条槽都落在视野里**的那些槽，这是踩出来的一个坑：
+   *
+   * 原本写的是 `upto = floor((leadZ + AHEAD_CULL) / SLOT)`，于是槽 `i` 恰好在
+   * `leadZ` 刚够到 `i × SLOT - AHEAD_CULL` 的那一格被处理，而此时它的 `z`
+   * （`i × SLOT + 40` 起）**必然大于** `leadZ + AHEAD_CULL`——同一格末尾的
+   * `cullCritters` 立刻把它收走了。结果是：路上的畜生一头都没出现过，
+   * 而且每一次都是"生成 → 回收"发生在同一格，日志里连一行都留不下。
+   *
+   * 判据取这一槽里**最靠前**的那头（`(i+1) × SLOT - 40`）：它得先落进视野，
+   * 这一槽才算数。光标因此停在"还没轮到"的槽上，下次接着处理。
+   */
+  const upto = Math.floor((leadZ + AHEAD_CULL + 40) / SLOT) - 1;
   for (let i = from; i <= upto; i++) {
     if (hash2(seed + 9001, i) > CHANCE) continue;
     const list = kindsOf(w.mode);

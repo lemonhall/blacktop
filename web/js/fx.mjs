@@ -10,9 +10,9 @@
  * 那是俯视游戏的做法，放在这里一眼就假。
  */
 
-import { TAU } from "/sim/constants.mjs";
-import { cosmeticRng } from "/sim/rng.mjs";
-import { WEAPONS } from "/sim/weapons.mjs";
+import { TAU } from "../../sim/constants.mjs";
+import { cosmeticRng } from "../../sim/rng.mjs";
+import { WEAPONS } from "../../sim/weapons.mjs";
 import { FX, S } from "./state.mjs";
 import { play } from "./audio.mjs";
 

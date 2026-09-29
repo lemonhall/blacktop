@@ -10,7 +10,7 @@
  * 渲染在 `render.mjs` / `road.mjs` / `sprites.mjs`。这个文件只负责串起来。
  */
 
-import { DT } from "/sim/constants.mjs";
+import { DT } from "../../sim/constants.mjs";
 import { S } from "./state.mjs";
 import { attachInput, bindTouch, readControls } from "./input.mjs";
 import { buildView } from "./view.mjs";

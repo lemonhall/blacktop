@@ -9,7 +9,7 @@
  * 是"它的代价"，不是"它的等级"。
  */
 
-import { BIKES, PALETTES } from "/sim/data.mjs";
+import { BIKES, PALETTES } from "../../sim/data.mjs";
 import { drawRider } from "./sprites.mjs";
 
 const $ = id => document.getElementById(id);

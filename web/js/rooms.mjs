@@ -12,7 +12,7 @@ import { TENANT, apiUrl } from "./config.mjs";
 import { guestSession, listRooms, leaderboard, createRoom, quickMatch } from "./net.mjs";
 import { createIdentityGate } from "./identity.mjs";
 import { readName, writeName, ensureName } from "./namegate.mjs";
-import { BIKES, MODES } from "/sim/data.mjs";
+import { BIKES, MODES } from "../../sim/data.mjs";
 import { selectedBike, selectedPalette } from "./showcase.mjs";
 import { S } from "./state.mjs";
 

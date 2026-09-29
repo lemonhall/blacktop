@@ -9,10 +9,10 @@
  * 每帧只写**变化过的**文本，否则 60Hz 的 textContent 赋值会让长局明显掉帧。
  */
 
-import { clock } from "/sim/constants.mjs";
-import { NITRO_CD } from "/sim/racer.mjs";
-import { WEAPONS } from "/sim/weapons.mjs";
-import { BIKES } from "/sim/data.mjs";
+import { clock } from "../../sim/constants.mjs";
+import { NITRO_CD } from "../../sim/racer.mjs";
+import { WEAPONS } from "../../sim/weapons.mjs";
+import { BIKES } from "../../sim/data.mjs";
 import { FX } from "./state.mjs";
 import { drawGauge } from "./gauge.mjs";
 import { revs, TACH } from "./tach.mjs";
