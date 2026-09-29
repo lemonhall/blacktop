@@ -35,8 +35,10 @@ export function drawOverlays(ctx, view, cam) {
   if (S.flash > 0.01) {
     const f = ctx.createRadialGradient(W / 2, H * 0.52, H * 0.2, W / 2, H * 0.5, H * 0.92);
     f.addColorStop(0, `rgba(${S.flashColor},0)`);
-    f.addColorStop(0.62, `rgba(${S.flashColor},${(S.flash * 0.2).toFixed(3)})`);
-    f.addColorStop(1, `rgba(${S.flashColor},${(S.flash * 0.6).toFixed(3)})`);
+    // 陡峭的两级，不是均匀的一层：均匀一层在夜空上会被冲成"色偏"（红压到深蓝上
+    // 只剩紫），看着像显示器坏了。压在**边缘一条带**上才是"我挨了一下"。
+    f.addColorStop(0.7, `rgba(${S.flashColor},${(S.flash * 0.12).toFixed(3)})`);
+    f.addColorStop(1, `rgba(${S.flashColor},${(S.flash * 0.88).toFixed(3)})`);
     ctx.fillStyle = f;
     ctx.fillRect(0, 0, W, H);
   }

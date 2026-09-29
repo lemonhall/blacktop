@@ -33,7 +33,7 @@ export function consumeEvents(events, view) {
         if (ev.a === mine) { play("punch"); S.hitUntil = performance.now() + 140; impact(0.22); }
         else if (ev.b === mine) {
           play("hurt"); S.shake = Math.min(14, S.shake + 7);
-          impact(0.34, "255,90,78", 0.42);
+          impact(0.34, "255,90,78", 0.48);
         }
         break;
       case "whiff":
@@ -68,7 +68,7 @@ export function consumeEvents(events, view) {
         feed(`${nameOf(view, ev.a)} 摔车${heavy ? " · 撞得太狠" : ""}`, "#ffb08a");
         if (ev.a === mine) {
           play("crash"); S.shake = Math.min(26, S.shake + 20);
-          impact(0.6, "255,126,96", 0.38);
+          impact(0.6, "255,126,96", 0.44);
           announce("摔车了", "扶起来接着骑", "#ff9f6a");
         } else if (view && Math.abs(ev.z - (view.mine ? view.mine.z : 0)) < 90) {
           play("crash", 0.5);
@@ -90,7 +90,7 @@ export function consumeEvents(events, view) {
           const big = ev.kind === "dayun";
           S.shake = Math.min(30, S.shake + (big ? 22 : 14));
           // 踹飞是**主动**的爽，所以配暖白一闪：红闪留给"我挨了一下"，两者不能混。
-          impact(big ? 0.85 : 0.5, "255,238,200", big ? 0.4 : 0.22);
+          impact(big ? 0.85 : 0.5, "255,238,200", big ? 0.46 : 0.24);
         }
         break;
       }
