@@ -16,9 +16,10 @@
 // 渲染层过去是测试盲区，就因为这里写死了一个只有服务器才知道的绝对路径。
 import { LANE_W, clamp } from "../../sim/constants.mjs";
 import { hash2 } from "../../sim/rng.mjs";
-import { shade } from "./art.mjs";
+import { shade, trapezoid } from "./art.mjs";
 import { grainOverlay } from "./grain.mjs";
 import { tonesOf } from "./grounds.mjs";
+import { seaBand, shoulderDetail, tyreTracks } from "./roadwear.mjs";
 
 /** 焦距 = 画面高度 × 这个数。1.25 对应约 70° 的水平视野，是追尾视角的舒适区。 */
 const PROJ = 1.25;
@@ -126,13 +127,6 @@ export function occluded(S, cam, x, y, z) {
   return false;
 }
 
-function trapezoid(ctx, xA, wA, yA, xB, wB, yB) {
-  ctx.beginPath();
-  ctx.moveTo(xA - wA, yA); ctx.lineTo(xA + wA, yA);
-  ctx.lineTo(xB + wB, yB); ctx.lineTo(xB - wB, yB);
-  ctx.closePath(); ctx.fill();
-}
-
 /**
  * "第几格"的斑马纹下标，取值 0/1。
  *
@@ -158,6 +152,9 @@ export function drawRoad(ctx, cam, tbl, S) {
   for (let i = 0; i < track.lanes - 1; i++) {
     boundaries.push({ x: track.laneX(i) + LANE_W / 2, divider: i === track.sameLanes[0] - 1 });
   }
+  // 每条车道的中心线：轮胎痕和油渍都挂在它上面
+  const laneXs = [];
+  for (let i = 0; i < track.lanes; i++) laneXs.push(track.laneX(i));
   for (let i = SLICES - 1; i >= 0; i--) {
     const near = sliceAt(cam, tbl, i, half), far = sliceAt(cam, tbl, i + 1, half);
     if (!near || !far) continue;
@@ -165,16 +162,23 @@ export function drawRoad(ctx, cam, tbl, S) {
     if (yN - yF < 0.6) continue;
     if (yF > cam.H + 2) break;
     const z = (tbl.zs[i] + tbl.zs[i + 1]) / 2;
+    const geom = { far, near, yF, yN, z };
     // 每一格的路面亮度抖一点点（按**世界坐标**抖，所以车往前开时纹路是静止的）。
     // 一整条纯色的路是这一版之前最"塑料"的地方。
     const wear = hash2(Math.floor(z / 3), 11) * 0.09 - 0.045;
     // 路肩（整幅铺满：地形是一个面，不是一个盒子）
     ctx.fillStyle = tone.shoulder[band2(z, 14)];
     ctx.fillRect(0, yF, W, yN - yF);
+    // 海：有水的赛道在路肩外面直接铺一片水——它得压在路肩之上、路面之下
+    seaBand(ctx, track.ground, geom, W);
     // 路面
     const band = band2(z, 12);
     ctx.fillStyle = shade(tone.road[band], wear);
     trapezoid(ctx, far.x, far.hw, yF, near.x, near.hw, yN);
+    // 车轮压出来的沟：两条一起，一左一右
+    tyreTracks(ctx, laneXs, geom, tone.rut);
+    // 路肩上的痕迹**在路面之后画**：沙漠的沙是从路肩往路面上爬的，先画就被路面盖掉了
+    shoulderDetail(ctx, track.ground, geom);
     // 路缘石
     ctx.fillStyle = tone.rumble[band];
     trapezoid(ctx, far.x - far.hw - far.rumble * 0.5, far.rumble * 0.5, yF,

@@ -52,6 +52,19 @@ export function mix(a, b, t) {
 export const FOG = { city: "#3a2b46", wild: "#c3d3e2" };
 export const haze = (hex, k, mode = "city") => mix(hex, FOG[mode] || FOG.city, clamp01(k));
 
+/**
+ * 一个**上窄下宽的梯形**：伪 3D 里所有"贴着路面的一横条"都用它。
+ *
+ * 参数是两条平行边的中点与半宽，外加它们各自的 y。路面的每一片、路缘石、
+ * 车道线、轮胎痕都长这个样子——它该住在这里，而不是住在 `road.mjs` 里被复制。
+ */
+export function trapezoid(ctx, xA, wA, yA, xB, wB, yB) {
+  ctx.beginPath();
+  ctx.moveTo(xA - wA, yA); ctx.lineTo(xA + wA, yA);
+  ctx.lineTo(xB + wB, yB); ctx.lineTo(xB - wB, yB);
+  ctx.closePath(); ctx.fill();
+}
+
 /** 一段竖直渐变的填充色：`[[0, "#111"], [1, "#333"]]`。 */
 export function vgrad(ctx, x, y0, y1, stops) {
   const g = ctx.createLinearGradient(x, y0, x, y1);

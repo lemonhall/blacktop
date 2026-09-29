@@ -14,6 +14,7 @@ import assert from "node:assert/strict";
 import { CRITTERS } from "../sim/critters.mjs";
 import { MODES } from "../sim/maps.mjs";
 import { GROUNDS, tonesOf } from "../web/js/grounds.mjs";
+import { SEA, hasWear, seaBand } from "../web/js/roadwear.mjs";
 import { BY_MODE, PALETTES } from "../web/js/skies.mjs";
 import { backdrop, skyIds, skyOf } from "../web/js/sky.mjs";
 import { PROP_KINDS, PROP_SIZE, drawProp, hasProp, propImage, propPad } from "../web/js/props.mjs";
@@ -88,7 +89,50 @@ test("八种地面配色齐全：路面、路缘、车道线、路肩、雾、�
       assert.ok(tone[key], `${id} 少了 ${key}`);
     }
     assert.ok(tone.wet >= 0 && tone.wet <= 1, `${id} 的湿路面强度 ${tone.wet} 越界了`);
+    // 轮胎痕的颜色**必须**在表里：漏了不会报错（`fillStyle = undefined` 是静默的），
+    // 只会悄悄少画两道沟
+    assert.match(tone.rut, /^rgba?\(/, `${id} 少了轮胎痕的颜色 rut（写 rgba 才压得住路面）`);
   }
+});
+
+test("八条路各自的路肩痕迹都画得出来：漏一条就会退回城市的水洼", () => {
+  for (const id of Object.keys(GROUNDS)) {
+    assert.equal(hasWear(id), true, `${id} 没有路肩痕迹——它会长得和城市一模一样`);
+  }
+  assert.equal(hasWear("nope"), false);
+});
+
+/**
+ * 海是唯一一处"只画在屏幕半边"的东西，而它的多边形有一端**必然跑到画面外**。
+ * 上一版就是在这里翻的车：近处几片的岸边点在屏幕右边之外、远点却在屏幕左边，
+ * 一条多边形于是横跨整个画面，把路面涂成了一片水。判据很简单——凡是画出来的水，
+ * 它的每一笔都必须落在岸线右边。
+ */
+test("海只铺在岸线右边；近处那几片整片跳过，不许横跨画面", () => {
+  const slice = (ppm, x) => ({ x, hw: 100, rumble: 10, ppm, y: 400 });
+  const geom = (far, near) => ({ far, near, yF: 380, yN: 620, z: 90 });
+  const W = 1440;
+
+  // 近景片：12.5 米外就是一千多像素外，岸线根本不在画面里 → 一个字都不许画
+  const near = spyCtx();
+  seaBand(near.ctx, "coast", geom(slice(240, 700), slice(300, 706)), W);
+  assert.equal(near.ops.length, 0, "岸线在画面外的那一片不该画水");
+
+  // 远景片：岸线在画面里 → 画，而且画出来的 x 全在岸线右侧
+  const far = spyCtx();
+  seaBand(far.ctx, "coast", geom(slice(22, 690), slice(26, 700)), W);
+  assert.ok(far.ops.length > 0, "岸线明明在画面里，一滴水都没画");
+  const shore = 700 + (100 + 10 + SEA.coast.from * 26);
+  for (const [, args] of far.ops) {
+    for (const v of args) {
+      if (typeof v !== "number") continue;
+      assert.ok(v >= shore - 2 || v <= W + 2, `水画到了岸线左边的 ${v}`);
+    }
+  }
+  // 不是海的赛道：怎么喊都不画
+  const dry = spyCtx();
+  seaBand(dry.ctx, "desert", geom(slice(22, 690), slice(26, 700)), W);
+  assert.equal(dry.ops.length, 0);
 });
 
 test("拿模式 id 或地面 id 都能取到配色，不认识的名字退回城市", () => {
