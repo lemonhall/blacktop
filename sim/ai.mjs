@@ -65,9 +65,12 @@ export function aiInput(w, r, dt) {
   let act = 0;
   if (r.attackCd <= 0 && r.stamina > 42) {
     const rival = nearestRival(w, r, 3.6);
+    // 身后贴上来的也要打——原版里最经典的画面就是"回头一拳把追上来的踹翻"。
+    const behind = rival ? null : nearestBehind(w, r, 3.4);
     // 每秒大约一次挥拳的念头；真正出不出手还要看旁边有没有人（`attack` 里判定）。
     // 原来这里是每秒九次，机器人于是变成了一台永动的打桩机。
-    if (rival && random(w, 0, 1) < (0.6 + b.aggro * 0.4) * dt * 1.5) act |= 1;
+    const prey = rival || behind;
+    if (prey && random(w, 0, 1) < (0.6 + b.aggro * 0.4) * dt * 1.5) act |= rival ? 1 : 2;
   }
   // 大运当前：老兵会赌一脚，休闲的会躲。
   const truck = dayunAhead(w, r, 34);
@@ -175,15 +178,29 @@ function chooseSide(w, r, threat) {
   return prefer;
 }
 
+/** 正前方最近的对手（前打的目标）。窗口和 `punchTarget` 的向前一支对齐。 */
 function nearestRival(w, r, range) {
   for (const o of w.racers) {
     if (o === r || o.state === "wreck") continue;
     const dz = o.z - r.z;
-    if (dz < -2.4 || dz > range) continue;
+    if (dz < -0.8 || dz > range) continue;
     if (Math.abs(o.x - r.x) > 1.75) continue;
     return o;
   }
   return null;
+}
+
+/** 身后贴上来的对手（回身打的目标）。 */
+function nearestBehind(w, r, range) {
+  let best = null, bestDz = -Infinity;
+  for (const o of w.racers) {
+    if (o === r || o.state === "wreck") continue;
+    const dz = o.z - r.z;
+    if (dz < -range || dz > 0.8) continue;
+    if (Math.abs(o.x - r.x) > 1.75) continue;
+    if (dz > bestDz) { best = o; bestDz = dz; }
+  }
+  return best;
 }
 
 function dayunAhead(w, r, range) {

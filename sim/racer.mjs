@@ -21,6 +21,14 @@ export const TUNE = {
   // 是折磨。所有"打架很凶"的观感都该来自拳头挥出去的那一下，而不是来自掉血速度。
   regen: 11, regenDelay: 3.0,
   attackCost: 5, attackCd: 0.5, swing: 0.3,
+  /**
+   * 够得着的范围（米，沿路方向）。**原版的攻击不分招式、分方向**：正前方一拳
+   * 打身前的人，回身一拳打身后追上来的那个人。回身那一拳够得着的人少一点、
+   * 伤害低一点——回头出手本来就别扭，这是手感，不是平衡。
+   * `reachSide` 是"正好并排"的那半米：两边都够得着，否则两台车贴在一起就成了
+   * "脸对脸谁也打不着谁"。
+   */
+  reachFront: 3.8, reachBack: 3.6, reachSide: 0.8, reachX: 1.75, backDmg: 0.85,
   /** 被打的人有 0.4 秒的"缓一下"：没有这道闸门，三台车并排时能在一秒内把人打下车。 */
   hurtDelay: 0.4,
   punchDmg: 17, kickBonus: 7,
@@ -92,7 +100,10 @@ export function stepRacer(w, r, dt, input = {}) {
   if (w.time - r.lastHit > TUNE.regenDelay) {
     r.stamina = Math.min(STAMINA_MAX, r.stamina + TUNE.regen * dt);
   }
-  if (input.act & 1) attack(w, r);
+  // 攻击位：bit1 = 正前方一拳，bit2 = 回身一拳。两个都按着也只出一拳——原版
+  // 一挥手就只挥一次，共用同一个冷却。
+  if (input.act & 1) attack(w, r, 1);
+  else if (input.act & 2) attack(w, r, -1);
 
   collideTraffic(w, r) || bump(w, r);
   r.kmh = r.v * KMH;
@@ -120,52 +131,70 @@ function stepWreck(w, r, dt) {
 
 /**
  * 出拳 / 飞踢。判定顺序就是**优先级**：
- *   1. 迎面来的大运在出脚窗口里 → 踢飞（全场唯一能把大运送上天的方式）；
+ *   1. 迎面来的大运在出脚窗口里 → 踢飞（全场唯一能把大运送上天的方式，只在前打）；
  *   2. 身旁有人 → 一拳下去，打到体力见底就把他撂下车；
  *   3. 什么都没有 → 挥空（照样掉体力，别乱按）。
+ *
+ * `dir` 是出手方向：`+1` 正前方、`-1` 回身。这一层**只有两个方向、没有招式**，
+ * 因为原版就是这样的：空手是拳，捡到家伙是武器，区别在够多远，不在按哪几个键。
  */
-export function attack(w, r) {
+export function attack(w, r, dir = 1) {
   if (r.attackCd > 0 || r.state !== "ride") return false;
   r.attackCd = TUNE.attackCd;
   r.swing = TUNE.swing;
   r.stamina = Math.max(0, r.stamina - TUNE.attackCost);
 
-  const truck = kickTarget(w, r);
-  if (truck && fling(w, truck, Math.sign(truck.x - r.x) || 1)) {
-    r.dayuns++;
-    r.cash += 1500;
-    r.stamina = Math.min(STAMINA_MAX, r.stamina + 22);
-    w.events.push({ k: "fling", a: r.id, z: truck.z, x: truck.x, w: r.x });
-    return true;
+  // 大运当前：只有**正前方**那一拳能踢。回头踢飞一辆迎面而来的大运没有道理，
+  // 而且那会让"什么时候回头"变成没有代价的选择。
+  if (dir > 0) {
+    const truck = kickTarget(w, r);
+    if (truck && fling(w, truck, Math.sign(truck.x - r.x) || 1)) {
+      r.dayuns++;
+      r.cash += 1500;
+      r.stamina = Math.min(STAMINA_MAX, r.stamina + 22);
+      w.events.push({ k: "fling", a: r.id, z: truck.z, x: truck.x, w: r.x });
+      return true;
+    }
   }
 
-  const target = punchTarget(w, r);
+  const target = punchTarget(w, r, dir);
   if (!target) {
-    w.events.push({ k: "whiff", a: r.id, z: r.z, x: r.x });
+    w.events.push({ k: "whiff", a: r.id, z: r.z, x: r.x, dir });
     return false;
   }
-  const dmg = (TUNE.punchDmg + r.v * 0.12) * (1.15 / specOf(target).mass);
+  const dmg = (TUNE.punchDmg + r.v * 0.12) * (1.15 / specOf(target).mass) * (dir > 0 ? 1 : TUNE.backDmg);
   target.stamina -= dmg;
   target.lastHit = w.time;
   target.lat += Math.sign(target.x - r.x || 1) * 4.4;
   target.wobble = 1;
-  w.events.push({ k: "hit", a: r.id, b: target.id, z: target.z, x: target.x, d: Math.round(dmg) });
+  w.events.push({ k: "hit", a: r.id, b: target.id, z: target.z, x: target.x, d: Math.round(dmg), dir });
   if (target.stamina <= 0) {
     if (wreck(w, target, { kind: "down", by: r.id })) r.downs++;
   }
   return true;
 }
 
-/** 打谁：优先"正前方最近"，其次是并排。身后的目标要够近才回头踢。 */
-function punchTarget(w, r) {
+/**
+ * 打谁：`dir` 是出手方向（`+1` 向前 / `-1` 回身）。
+ *
+ * 窗口按方向拆开——前打看身前 `0~3.8` 米，回身打看身后 `0~3.6` 米，而"正好
+ * 并排"的那 `0.8` 米两边都够得着。然后在**出手的那一侧**里挑最近的：前打
+ * 优先打正前方的人，回身打优先打身后的人；另一侧的人只是"够得着但不好打"，
+ * 记分按 1.6 倍折算，所以它永远不会抢在前面那个人之前被选中。
+ */
+function punchTarget(w, r, dir = 1) {
+  const front = dir > 0;
+  const lo = front ? -TUNE.reachSide : -TUNE.reachBack;
+  const hi = front ? TUNE.reachFront : TUNE.reachSide;
   let best = null, bestScore = Infinity;
   for (const o of w.racers) {
     if (o === r || o.state === "wreck") continue;
     const dz = o.z - r.z;
     const dx = o.x - r.x;
-    if (dz < -2.4 || dz > 3.8 || Math.abs(dx) > 1.75) continue;
+    if (dz < lo || dz > hi || Math.abs(dx) > TUNE.reachX) continue;
     if (w.time - o.lastHit < TUNE.hurtDelay) continue;
-    const score = (dz < 0 ? -dz * 1.6 : dz) + Math.abs(dx) * 0.7;
+    const sameSide = front ? dz >= 0 : dz <= 0;
+    const score = Math.abs(dz) * (sameSide ? 1 : 1.6) + Math.abs(dx) * 0.7;
     if (score < bestScore) { best = o; bestScore = score; }
   }
   return best;

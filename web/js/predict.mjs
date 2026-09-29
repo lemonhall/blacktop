@@ -46,13 +46,17 @@ export function initPredict(S, mine) {
   S.predictW.racers = [S.predictMe];
 }
 
-/** 走一格。`punch` 只是让画面上的拳头立刻出去，判定仍然在服务端。 */
-export function stepPredict(S, dt, controls, punch) {
+/**
+ * 走一格。`act`（1 前打 / 2 回身打）只是让画面上的拳头立刻出去，判定仍然在
+ * 服务端——预测世界里的对手与车流都是空的，所以这一层算出来的只会是"我掉了
+ * 一点体力、胳膊挥了一下"，绝不会自作主张把谁撂下车。
+ */
+export function stepPredict(S, dt, controls, act = 0) {
   const me = S.predictMe, w = S.predictW;
   if (!me || !w) return null;
   stepRacer(w, me, dt, {
     th: controls.th, br: controls.br, st: controls.st, nos: controls.nos,
-    act: punch ? 1 : 0,
+    act: act | 0,
   });
   return me;
 }

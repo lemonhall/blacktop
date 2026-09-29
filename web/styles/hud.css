@@ -41,6 +41,26 @@
 }
 .hud-rank b { font-size: 22px; font-style: italic; color: var(--amber); font-variant-numeric: tabular-nums; }
 
+/*
+ * 常驻键位提示：小字、居中、贴在顶栏下沿。
+ *
+ * 为什么不用弹窗：赛车游戏里"忘了怎么打"的代价是一整局的体验，而开一次帮助
+ * 弹窗要么挡视线要么得暂停。所以把键位**一直摆在那里**，小到不抢画面，
+ * 但一眼能扫到。窄屏与触屏上关掉它——那时候屏幕上有真的按钮。
+ */
+.hud-keys {
+  position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
+  margin: 0; padding: 3px 13px; max-width: min(720px, 76vw);
+  border: 1px solid var(--line); border-radius: 999px;
+  background: #070c14a8; backdrop-filter: blur(6px);
+  font-size: 10px; line-height: 1.7; letter-spacing: .4px;
+  color: var(--muted); text-align: center; white-space: nowrap;
+}
+.hud-keys kbd {
+  min-width: 18px; padding: 1px 4px; margin: 0 2px;
+  font-size: 10px; background: #0b1220cc;
+}
+
 /* ------------------------------------------------------------ 名次与播报 */
 .rank-list {
   position: absolute; left: 20px; top: 96px;
@@ -156,6 +176,11 @@ html.touch-device .touch-button {
 }
 html.touch-device .touch-button.big { width: 82px; height: 82px; font-size: 14px; background: #ffb03a2e; }
 html.touch-device .touch-button.on { background: var(--amber); color: #201203; }
+/* 攻击是两个方向、两个按钮：竖着叠成一列，横向就不再跟氮气/刹车/油门抢地方。 */
+html.touch-device .punch-pair { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+html.touch-device .touch-button.small { width: 52px; height: 52px; font-size: 11px; }
+/* 触屏上屏幕里就有真的按钮，那行小字纯属占地方。 */
+html.touch-device .hud-keys { display: none; }
 
 /* 触屏设备上仪表盘会跟控件抢地方：把它挪到上面一档并缩小。 */
 html.touch-device .hud-dash { bottom: calc(96px + env(safe-area-inset-bottom)); padding: 9px 12px; gap: 10px; }
@@ -165,6 +190,8 @@ html.touch-device .progress-rail { bottom: calc(232px + env(safe-area-inset-bott
 
 @media (max-width: 760px) {
   .hud-top { left: 12px; right: 12px; top: 12px; }
+  /* 窄屏上名次表会往上顶一格，键位那行小字就没地方站了——直接让位。 */
+  .hud-keys { display: none; }
   .rank-list { left: 12px; top: 84px; width: 148px; }
   .feed-list { right: 12px; top: 84px; max-width: 210px; }
   .hud-dash { grid-template-columns: 84px minmax(140px, 1fr) 84px; gap: 10px; padding: 9px 11px; }

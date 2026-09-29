@@ -1,9 +1,12 @@
 /**
  * 输入采集：键盘、触屏 → 一帧操作意图。
  *
- * 摩托车的操作只有五个：**油门、刹车、压车（左右连续量）、氮气、出拳**。
+ * 摩托车的操作只有六个：**油门、刹车、压车（左右连续量）、氮气、前打、回身打**。
  * 没有准星、没有鼠标——这一层因此比射击版干净得多：它只回答"这一帧你想怎么骑"，
  * 坐标一个字节都不上行，这是"改一行 JS 就能瞬移"的唯一根治法。
+ *
+ * 方向键与 WASD **同时生效**，不是二选一：`THROTTLE` 这样的表里把两种键都列上，
+ * 谁按哪个都算数。攻击按原版的路子分前后两个方向（不是两套招式）——详见 `sim/racer.mjs`。
  */
 
 const LEFT = ["KeyA", "ArrowLeft"];
@@ -11,7 +14,13 @@ const RIGHT = ["KeyD", "ArrowRight"];
 const THROTTLE = ["KeyW", "ArrowUp"];
 const BRAKE = ["KeyS", "ArrowDown"];
 const NITRO = ["Space"];
-const PUNCH = ["KeyJ", "KeyK", "KeyF"];
+/** 正前方一拳：`J` 主键，`F` 是上一版的兼容键（老玩家改不过来，留着不碍事）。 */
+const PUNCH_FRONT = ["KeyJ", "KeyF"];
+/** 回身一拳：打身后追上来的那个人。 */
+const PUNCH_BACK = ["KeyK"];
+
+/** 触屏那两个按钮 → 同一个位掩码（1 前打 / 2 回身打）。 */
+const TOUCH_ACT = { punchFront: 1, punchBack: 2 };
 
 const any = (keys, list) => list.some(code => keys.has(code));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -22,7 +31,8 @@ export function attachInput(S, { onPunch, onNitro } = {}) {
     // 方向键与空格会滚动页面——赛车游戏里这尤其致命（画面一顿就甩出弯道）。
     if (/^Arrow/u.test(event.code) || event.code === "Space") event.preventDefault();
     S.keys.add(event.code);
-    if (PUNCH.includes(event.code)) { S.actions |= 1; onPunch?.(); }
+    if (PUNCH_FRONT.includes(event.code)) { S.actions |= 1; onPunch?.(); }
+    else if (PUNCH_BACK.includes(event.code)) { S.actions |= 2; onPunch?.(); }
     if (NITRO.includes(event.code)) onNitro?.();
   });
   document.addEventListener("keyup", event => S.keys.delete(event.code));
@@ -81,12 +91,13 @@ export function bindTouch(S, root) {
   }
   for (const button of root.querySelectorAll("[data-hold]")) {
     const field = button.dataset.hold;
+    const act = TOUCH_ACT[field] | 0;
     const down = event => {
       event.preventDefault(); button.classList.add("on");
-      if (field === "punch") { S.actions |= 1; return; }
+      if (act) { S.actions |= act; return; }
       S.touch[field] = 1;
     };
-    const up = () => { button.classList.remove("on"); if (field !== "punch") S.touch[field] = 0; };
+    const up = () => { button.classList.remove("on"); if (!act) S.touch[field] = 0; };
     button.addEventListener("pointerdown", down);
     button.addEventListener("pointerup", up);
     button.addEventListener("pointercancel", up);

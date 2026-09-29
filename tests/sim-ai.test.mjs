@@ -89,3 +89,22 @@ test("十三台机器人跑一整场：追尾次数必须被压住", () => {
   const rear = kinds.rear || 0;
   assert.ok(rear / w.racers.length < 3, `平均每台车追尾 ${(rear / w.racers.length).toFixed(2)} 次`);
 });
+
+test("身后贴着人时机器人会回身打（act 的 bit2 真的在用，不是摆设）", () => {
+  const w = build({ seed: 13, bots: 2, humans: [] });
+  const [r, o] = w.racers;
+  r.x = 0; r.z = 1000; r.v = 42;
+  r.brain = makeBrain(w, r);
+  w.countdown = 0;
+  let back = false;
+  for (let i = 0; i < Math.round(8 / DT) && !back; i++) {
+    // 把那台车一直钉在身后一点六米处：我们要测的是"机器人会不会回头打"，
+    // 不是"这两台车谁会先骑走"。顺手把它治满，免得被揍下车导致后面没人可打。
+    o.z = r.z - 1.6; o.x = r.x + 0.3; o.v = r.v; o.stamina = 100;
+    const input = aiInput(w, r, DT);
+    if (input.act & 2) back = true;
+    stepRacer(w, r, DT, input);
+    stepTraffic(w, DT);
+  }
+  assert.ok(back, "身后有人时机器人该回头打");
+});

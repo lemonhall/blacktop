@@ -42,7 +42,8 @@ const ink = "rgba(6,8,14,.86)";
  * 一台摩托 + 车手（后视）。
  *
  * `swing` 是出拳/飞踢的剩余时间（秒，从 0.3 递减）；`wreck` 是摔倒剩余时间。
- * `me` 只是让"我"多一圈高亮，判定上没有任何区别。
+ * `swingBack` 把这一拳镜像到另一边——回身打身后的人，手臂朝车尾甩过去，
+ * 而不是越过车头。`me` 只是让"我"多一圈高亮，判定上没有任何区别。
  */
 export function drawRider(ctx, o) {
   const s = o.s;
@@ -128,22 +129,31 @@ export function drawRider(ctx, o) {
   ctx.fillStyle = "rgba(10,14,24,.55)";
   roundRect(ctx, -0.23, 1.82, 0.46, 0.075, 0.03);
 
-  if (o.swing > 0) drawSwing(ctx, o.swing, p);
+  if (o.swing > 0) drawSwing(ctx, o.swing, p, o.swingBack);
   if (o.nitro) drawNitro(ctx, o.flameSeed || 0);
   ctx.restore();
 }
 
-/** 出拳 / 飞踢：一条"伸出去又收回来"的曲线，命中感全靠这一下。 */
-function drawSwing(ctx, swing, p) {
+/**
+ * 出拳 / 飞踢：一条"伸出去又收回来"的曲线，命中感全靠这一下。
+ *
+ * 回身打就是把同一条轨迹**镜像**到另一侧、再压低一点：画片时代就是这么干的——
+ * 一张图翻一下就多了一个方向的动作，而不是重画一套帧。
+ */
+function drawSwing(ctx, swing, p, back) {
   const k = Math.sin(Math.min(1, 1 - swing / 0.3) * Math.PI);
   ctx.save();
-  ctx.translate(0.3, 1.42);
-  ctx.rotate(-1.05 - 0.5 * k);
+  ctx.translate(back ? -0.3 : 0.3, back ? 1.3 : 1.42);
+  if (back) ctx.scale(-1, 1);
+  // 回身那一拳再多压下去一点：从车尾看过去，"往后甩"和"往旁边伸"的区别，
+  // 全在这点角度上。
+  ctx.rotate(-1.05 - 0.5 * k - (back ? 0.62 : 0));
+  const reach = (back ? 0.56 : 0.5) + k * 0.32;
   ctx.strokeStyle = shade(p.jacket, 0.15);
   ctx.lineWidth = 0.17; ctx.lineCap = "round";
-  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0.5 + k * 0.32, 0.16); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(reach, 0.16); ctx.stroke();
   ctx.fillStyle = shade(p.helmet, 0.1);
-  roundRect(ctx, 0.42 + k * 0.32, 0.06, 0.24, 0.2, 0.07);
+  roundRect(ctx, reach - 0.08, 0.06, 0.24, 0.2, 0.07);
   ctx.restore();
 }
 

@@ -137,9 +137,12 @@ function drawRacerSprite(ctx, cam, tbl, r, view) {
   if (!p || p.ppm < 0.05) return;
   const me = r.id === (view.mine ? view.mine.id : -1);
   const swing = me && S.swing > 0 ? Math.max(r.swing, S.swing) : r.swing;
+  // 出拳方向只有我自己这一台能画准：快照里的 `sw` 只带"还剩多久"，回身打的那一
+  // 下只有本机知道。别人的胳膊一律按前打画——反正镜头在自己车后面，看不出来。
+  const swingBack = me && S.swing > 0 && S.swingBack;
   drawRider(ctx, {
     cx: p.sx, baseY: p.sy, s: p.ppm, palette: r.palette,
-    lean: r.lean, swing, wreck: r.state === "wreck" ? Math.max(0.2, r.wreck) : 0,
+    lean: r.lean, swing, swingBack, wreck: r.state === "wreck" ? Math.max(0.2, r.wreck) : 0,
     nitro: r.nitro, flameSeed: r.id,
   });
   if (me) {

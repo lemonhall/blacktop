@@ -58,8 +58,10 @@ function tickArena(delta, now) {
   const me = S.predictMe;
   if (me) {
     const controls = readControls(S);
-    const punch = (S.actions | 0) !== 0;
-    if (punch && S.countdown <= 0) S.swing = 0.32;
+    // `act` 是待发出的攻击位（1 前打 / 2 回身打）。它同时喂给本地预测与画面：
+    // 判定在服务端，但"我的胳膊什么时候出去"必须本帧就有反应，否则每一下都慢半拍。
+    const act = S.actions | 0;
+    if (act && S.countdown <= 0) { S.swing = 0.32; S.swingBack = (act & 2) !== 0; }
     const cmd = frameInput(now, controls);
     state.acc = Math.min(state.acc + delta, DT * MAX_TICKS_PER_FRAME);
     let guard = 0;
@@ -68,7 +70,7 @@ function tickArena(delta, now) {
       // 发车倒数里油门是锁死的，两边的世界也都在等——这几格不该算作"我走了"。
       if (S.countdown > 0) continue;
       S.predictW.events.length = 0;
-      stepPredict(S, DT, controls, punch);
+      stepPredict(S, DT, controls, act);
       noteTick(cmd);
     }
     // 世界是被消息驱动的：就算这一帧一格都没走（倒数中、或者人还躺在地上），

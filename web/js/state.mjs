@@ -43,7 +43,7 @@ export const S = {
 
   keys: new Set(),
   touch: { steer: 0, throttle: 0, brake: 0, nitro: 0 },
-  actions: 0,                   // 待发出的一次性动作位：1 出拳/飞踢
+  actions: 0,                   // 待发出的一次性动作位（位掩码）：1 前打、2 回身打
   seq: 0,
   lastSentAt: 0,
   lastPingAt: 0,
@@ -54,6 +54,7 @@ export const S = {
   cmds: [],                     // 已经发出去、还没被服务端 ack 的命令（重放用）
   cmdSeq: 0,
   swing: 0,                     // 本地出拳动画的剩余时间（秒），只影响画面
+  swingBack: false,             // 上面这一拳是回身打（画面把手臂镜像到另一侧）
   pendingEvents: [],            // 还没被表现层消费掉的世界事件
 };
 
