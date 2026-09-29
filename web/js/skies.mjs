@@ -30,14 +30,20 @@ export const PALETTES = {
     sun: { x: 0.32, y: 0.68, r: 0.16, color: "rgba(255,240,205,.9)", halo: "rgba(255,190,130,.3)" },
     seaband: "#2c5f86", waves: "#9fd0e4",
   },
-  // 正午的荒野：亮蓝 + 薄云 + 两排远山
+  // 正午的荒野：亮蓝 + 平底积云 + 高处卷云 + 两排远山
   noon: {
-    sky: [[0, "#2f6fc4"], [0.6, "#7fb2e0"], [1, "#cfe2ee"]],
-    layers: ["clouds", "ridge", "ridge"],
-    clouds: { count: 7, color: "rgba(255,255,255,", alpha: 0.18 },
+    sky: [[0, "#2a67bd"], [0.46, "#5f9fd8"], [0.78, "#a9cbe6"], [1, "#dfeaf1"]],
+    layers: ["cirrus", "clouds", "ridge", "ridge"],
+    cirrus: { count: 9, seed: 13, color: "255,255,255", alpha: 0.1, y0: 0.04, span: 0.2 },
+    // 云底压的那层蓝灰是**云自己的影子**：没有它，白云贴在蓝天上就是一张贴纸
+    clouds: {
+      count: 6, color: "253,253,255", alpha: 0.72, jitter: 0.16,
+      y0: 0.1, y1: 0.34, w0: 0.1, w1: 0.13, flat: 0.3,
+      shade: "146,176,214", shadeA: 0.62,
+    },
     ridge: [
-      { color: "rgba(120,150,170,.75)", tall: 0.26, seed: 23, step: 18 },
-      { color: "rgba(90,120,140,.8)", tall: 0.12, seed: 29, step: 26 },
+      { color: "rgba(126,156,178,.72)", tall: 0.3, seed: 23, step: 18 },
+      { color: "rgba(84,116,138,.85)", tall: 0.14, seed: 29, step: 26 },
     ],
   },
   // 沙漠：天白得发黄，一颗高挂的太阳，地平线是滚烫的沙丘
@@ -74,15 +80,28 @@ export const PALETTES = {
       mid: "rgba(186,204,152,.3)", bot: "rgba(206,216,168,.44)",
     },
   },
-  // 雪原：阴天的白。山脊是白的、天是灰的，只有一条很淡的亮带说明太阳在哪
+  // 雪原：阴天的白。山是**有明暗面**的白，天是冷的灰，一条很淡的亮带说明太阳在哪
   snow: {
-    sky: [[0, "#8e9aac"], [0.44, "#b9c4d2"], [0.74, "#dde6ef"], [1, "#f2f6fa"]],
-    layers: ["sun", "peaks", "snowfall"],
-    sun: { x: 0.62, y: 0.6, r: 0.2, color: "rgba(255,255,255,.45)", halo: "rgba(255,255,255,.2)" },
-    peaks: [
-      { color: "#c3ccd8", tall: 0.42, seed: 71, step: 34 },
-      { color: "#e6edf5", tall: 0.22, seed: 73, step: 21 },
+    // 顶上那一档比上一版**深了三成**：原来天和雪地都是接近 #eef2f7，地平线整条糊没了。
+    sky: [[0, "#75839a"], [0.34, "#93a1b4"], [0.66, "#c2cdda"], [0.88, "#e3ebf3"], [1, "#f4f8fc"]],
+    layers: ["sun", "snowridge", "snowridge", "mist", "snowfall"],
+    sun: { x: 0.6, y: 0.52, r: 0.26, color: "rgba(255,253,244,.5)", halo: "rgba(255,240,214,.22)" },
+    snowridge: [
+      // 远的那层：**更淡、更蓝**，不是更暗。
+      // 这是大气透视——远处的山退进天光里，和天几乎同色；上一版把远山画暗，
+      // 结果它看着比近山还近。齿距也必须**远大于**近层，否则两排锯齿叠在一起
+      // 是一把折扇，不是两列山。
+      // 齿距必须**远大于**近层——两条一样密的锯齿叠在一起是一排折扇，不是两列山。
+      { color: "#c3cedd", shade: "rgba(152,166,188,.34)", cap: "#eaf1f9", capAt: 0.42,
+        tall: 0.46, seed: 71, step: 104 },
+      // 近的那层：亮面是雪、暗面是岩，雪线压得低，山尖才有分量
+      { color: "#e9f0f8", shade: "rgba(126,144,170,.5)", cap: "#ffffff", capAt: 0.4,
+        tall: 0.3, seed: 79, step: 58 },
     ],
+    mist: {
+      depth: 0.3, bands: 0, none: "rgba(228,238,247,0)",
+      mid: "rgba(228,238,247,.42)", bot: "rgba(234,242,250,.66)",
+    },
   },
   // 工业区：天是脏的，地平线上一排吊车加一支废气燃烧塔
   works: {

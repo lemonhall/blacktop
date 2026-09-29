@@ -47,6 +47,22 @@ export function floater(x, z, y, text, color = "#ffe9a8", big = false) {
   FX.floaters.push({ x, z, y, text, color, big, life: 1, max: 1 });
 }
 
+/**
+ * 越野扬尘：**贴地往后甩**的一小团土。
+ *
+ * 上一版这里的调用直接复用了 `smoke()`（撞车那种烟），于是尘土从后轮一路升到
+ * 骑手的后背上——车手被自己扬起的土糊成一团淡影子，截图里最扎眼的一处。
+ * 真正的扬尘是贴着地面往后飞的：**高度低、上浮几乎为零、活得短**。
+ * 三样都要，少一样就会重新盖住车手。
+ */
+export function dust(x, z, color = "rgba(198,178,138,.34)") {
+  FX.smoke.push({
+    x: x + between(-0.45, 0.45), z: z + between(-0.5, 0.3), y: between(0.03, 0.15),
+    vx: between(-2.6, 2.6), vz: between(-3.6, -0.6), vy: between(0.05, 0.35),
+    life: between(0.34, 0.68), max: 0.68, size: between(0.12, 0.3), color,
+  });
+}
+
 export function skid(x, z) {
   FX.skid.push({ x, z, life: 7, max: 7 });
   if (FX.skid.length > 160) FX.skid.shift();
@@ -206,7 +222,7 @@ export function stepFx(dt, view) {
   const me = view && view.mine;
   if (me && me.state === "ride") {
     const off = me.wobble > 0.25;
-    if (off && me.v > 6 && rnd() < 0.55) smoke(me.x, me.z - 0.8, 0.3, "rgba(190,170,130,.5)", 1, 0.7);
+    if (off && me.v > 6 && rnd() < 0.8) dust(me.x - me.lean * 0.25, me.z - 1.5);
     if (Math.abs(me.lean) > 0.75 && me.v > 22 && rnd() < 0.3) skid(me.x - Math.sign(me.lean) * 0.3, me.z - 1.4);
   }
   integrate(FX.sparks, dt, 26);
