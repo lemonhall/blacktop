@@ -117,3 +117,35 @@ export function widestX(ops) {
 export const fingerprint = ops => ops
   .map(([name, args]) => `${name}(${args.map(a => (typeof a === "number" ? Math.round(a * 1000) / 1000 : String(a))).join(",")})`)
   .join(" ");
+
+/**
+ * 一幅画画到哪儿为止（米空间）。圆弧与椭圆要**带上半径**，否则一圈灯罩会被
+ * 当成一个点，测试就白写了。
+ *
+ * 用途：一件道具的贴图是一块固定大小的画布，画到框外面的部分会被直接切掉。
+ * 所以"有没有画出框"是一条硬契约，不是审美问题。
+ */
+export function bounds(ops) {
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  const put = (x, y) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (!Number.isFinite(x0)) { x0 = x1 = x; y0 = y1 = y; return; }
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x);
+    y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+  };
+  for (const [name, args] of ops) {
+    if (name === "moveTo" || name === "lineTo") put(args[0], args[1]);
+    else if (name === "rect" || name === "fillRect" || name === "strokeRect" || name === "clearRect") {
+      put(args[0], args[1]); put(args[0] + args[2], args[1] + args[3]);
+    } else if (name === "arc") {
+      put(args[0] - args[2], args[1] - args[2]); put(args[0] + args[2], args[1] + args[2]);
+    } else if (name === "ellipse") {
+      put(args[0] - args[2], args[1] - args[3]); put(args[0] + args[2], args[1] + args[3]);
+    } else if (name === "quadraticCurveTo") {
+      put(args[0], args[1]); put(args[2], args[3]);
+    } else if (name === "bezierCurveTo") {
+      put(args[0], args[1]); put(args[2], args[3]); put(args[4], args[5]);
+    }
+  }
+  return { x0, x1, y0, y1, ok: Number.isFinite(x0) };
+}

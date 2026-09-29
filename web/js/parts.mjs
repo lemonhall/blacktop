@@ -111,10 +111,13 @@ export function rustPatch(ctx, x, y, w, h, seed, k = 1) {
   if (k <= 0.02) return;
   ctx.fillStyle = `rgba(122,64,30,${0.3 * k})`;
   for (let i = 0; i < 5; i++) {
-    const rx = x + hash2(seed, i * 3 + 1) * w;
-    const ry = y + hash2(seed, i * 3 + 2) * h;
     const rw = w * (0.06 + hash2(seed, i * 3 + 3) * 0.16);
-    ctx.fillRect(rx, ry, rw, rw * (0.4 + hash2(seed, i + 40) * 0.7));
+    const rh = rw * (0.4 + hash2(seed, i + 40) * 0.7);
+    // 起点要留出自己那一块的地方：`x + hash*w` 会让靠右的锈斑整块画到板子外面，
+    // 而板子外面就是贴图框的边缘——锈于是变成一条贴着边缘糊上去的脏带。
+    const rx = x + hash2(seed, i * 3 + 1) * Math.max(0, w - rw);
+    const ry = y + hash2(seed, i * 3 + 2) * Math.max(0, h - rh);
+    ctx.fillRect(rx, ry, rw, rh);
   }
 }
 
@@ -167,15 +170,55 @@ export function glassPane(ctx, x, y, w, h, { lit = false, alpha = 1 } = {}) {
   ctx.fill();
 }
 
+/**
+ * 一段**斜网格**（铁丝网、脚手架、井架的斜撑）。
+ *
+ * 关键在"裁"：一条 45° 斜线的两根端点常常落在框外，直接画出去就会被贴图框
+ * 一刀切掉——画面上就是网格在离边缘还有一小段的地方**齐刷刷断掉**，露一条
+ * 笔直的硬边。所以这里先把每条斜线**按框裁短**，再描。框外一笔都不画。
+ *
+ * `dir = 1` 从左下往右上，`-1` 反过来；两种一起画就是菱形网。
+ */
+export function wireMesh(ctx, box, step, color, lineWidth = 0.02, both = true) {
+  const { x0, x1, y0, y1 } = box;
+  const w = x1 - x0, h = y1 - y0;
+  if (!(w > 0) || !(h > 0) || !(step > 0)) return;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+  for (const dir of both ? [1, -1] : [1]) {
+    // 斜线的 x 随 y 线性走动：x(y) = ax + dir * (y - y0)。k 遍历所有起点。
+    for (let k = -Math.ceil(h / step) - 1; k <= Math.ceil(w / step) + 1; k++) {
+      const ax = x0 + k * step;
+      // 只留 x 落在 [x0, x1] 里的那一段：解 ax + dir*(y - y0) ∈ [x0, x1]。
+      const ta = (x0 - ax) * dir, tb = (x1 - ax) * dir;
+      let ya = y0 + Math.min(ta, tb), yb = y0 + Math.max(ta, tb);
+      const lo = Math.max(y0, ya), hi = Math.min(y1, yb);
+      if (hi - lo <= 1e-4) continue;
+      ctx.beginPath();
+      ctx.moveTo(ax + dir * (lo - y0), lo);
+      ctx.lineTo(ax + dir * (hi - y0), hi);
+      ctx.stroke();
+    }
+  }
+}
+
 /** 一颗灯泡（外面套一圈光晕）。夜里的道具全靠它。 */
 export function bulb(ctx, x, y, r, color, lit = true, strength = 1) {
   if (lit) {
-    ctx.fillStyle = color;
-    ctx.globalAlpha = 0.22 * strength;
+    // 光晕**必须**是渐变。上一版是一颗 alpha 0.22 的实心圆：边缘一刀切下去，
+    // 夜里看就是一片贴在空中的灰饼（工地探照灯那两盏尤其刺眼）。
+    // 渐变让亮度在半径上自然衰减，边缘落在 alpha≈0 上，才叫"光"。
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r * 3.2);
+    g.addColorStop(0, color);
+    g.addColorStop(0.22, color);
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.save();
+    ctx.globalAlpha = 0.5 * strength;
+    ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.arc(x, y, r * 3.1, 0, Math.PI * 2);
+    ctx.arc(x, y, r * 3.2, 0, Math.PI * 2);
     ctx.fill();
-    ctx.globalAlpha = 1;
+    ctx.restore();
   }
   ctx.fillStyle = lit ? color : shade(color, -0.45);
   ctx.beginPath();

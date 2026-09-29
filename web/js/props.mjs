@@ -50,6 +50,41 @@ export const PROP_SIZE = {
   building: [13, 21],
 };
 
+/**
+ * 贴图画布往**两边**和**上面**多留的余量倍数。
+ *
+ * 为什么必须有这张表：一件道具的贴图是一块固定大小的离屏画布，**画到画布外面的
+ * 部分会被直接切掉**，画面上就是一条笔直的硬边。路灯和工地探照灯的光锥、地面上
+ * 那块亮斑，宽度都是道具本身的好几倍——不留余量，它们就只剩灯头底下那一小条，
+ * 剩下的全被裁没了。这是"看着像贴了张半透明纸"的真正原因。
+ *
+ * 留余量等于把画布放宽（或加高），"米 → 像素"的比例不变、接地点仍在画布底边的
+ * 中点，所以道具本身的大小和落点都不受影响，多出来的部分只是透明的。
+ */
+export const DEFAULT_PAD = [1.25, 1.1];
+/** `[横向余量, 纵向余量]`，两个都是"倍数"。纵向那一位给"比声明的高度还高"的道具。 */
+export const PROP_PAD = {
+  // 发光的东西：光锥和地面亮斑按米算，比杆子本身宽出好几倍。
+  lamp: [3.9, 1.05], floodlight: [4.6, 1.1], trafficlight: [2.0, 1.05],
+  lighthouse: [4.95, 1.15],
+  // 枝叶、屋檐、涵管口这类"本体之外还有东西"的：张开的叶子和挑出去的檐口
+  // 都是本体宽度的 1.3~2 倍，正好是被切得最难看的一类。
+  palm: [2.2, 1.05], deadtree: [1.75, 1.1], pipe: [1.7, 1.1], lodge: [1.7, 1.1],
+  watertower: [1.5, 1.05], silo: [1.45, 1.05], barrel: [1.45, 1.1],
+  billboard: [1.45, 1.05], busstop: [1.4, 1.05],
+  // 风滚草：一团乱枝，最长的几根本来就伸到本体外面，切齐了就成了一个圆饼。
+  tumble: [1.35, 1.25],
+  // 光打得很高 / 架子搭得很高：往上也得多留一截，不然塔顶那一层齐头切。
+  gantry: [1.25, 1.2], derrick: [1.25, 1.15], pine: [1.25, 1.1],
+};
+/**
+ * 一件道具的贴图该留多宽的余量（横向、纵向）。表里只写**比默认值宽**的那些。
+ * 数字不是拍脑袋来的，是 `tests/web-land-art.test.mjs` 拿画笔轨迹量出来的：
+ * 它会记下每一笔，谁画出了框就报"你需要多少"。改了画法的宽度，测试会指名道姓
+ * 地告诉你该把哪一个数字调大。
+ */
+export const propPad = kind => PROP_PAD[kind] || DEFAULT_PAD;
+
 /** 每一种道具画给谁。**用表而不是一长串 if**：加一种道具 = 加一行。 */
 const DRAWERS = {
   tree: nature.tree, pine: nature.pine, redwood: nature.redwood, palm: nature.palm,
@@ -92,16 +127,27 @@ const MAX_PX = 1600;
 
 const cache = new Map();
 
+/**
+ * 一件道具在屏幕上占多宽多高（像素）。**贴图和贴图框必须用同一个函数算**，
+ * 否则留了余量的道具会被拉伸成另一个尺寸——那是比裁切更难查的一种错。
+ */
+export function propBox(kind, ppm) {
+  const [w, h] = PROP_SIZE[kind] || PROP_SIZE.tree;
+  const [px, py] = propPad(kind);
+  return { w: w * px * ppm, h: h * py * ppm };
+}
+
 /** 取（或现画）一份道具贴图。返回的 canvas 底边中点就是它的"接地点"。 */
 export function propImage(ground, kind) {
   const key = `${ground}:${kind}`;
   const hit = cache.get(key);
   if (hit) return hit;
   const [w, h] = PROP_SIZE[kind] || PROP_SIZE.tree;
-  const px = Math.min(PX, MAX_PX / Math.max(w, h));
+  const [padX, padY] = propPad(kind);
+  const px = Math.min(PX, MAX_PX / Math.max(w * padX, h * padY));
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(8, Math.round(w * px));
-  canvas.height = Math.max(8, Math.round(h * px));
+  canvas.width = Math.max(8, Math.round(w * padX * px));
+  canvas.height = Math.max(8, Math.round(h * padY * px));
   const ctx = canvas.getContext("2d");
   ctx.translate(canvas.width / 2, canvas.height);
   ctx.scale(px, -px);

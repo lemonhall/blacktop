@@ -14,7 +14,7 @@
 import { TAU } from "../../sim/constants.mjs";
 import { hash2 } from "../../sim/rng.mjs";
 import { hgrad, poly, shade, vgrad } from "./art.mjs";
-import { bulb, concreteFace, glassPane, label3d, plankFace, pole, rustPatch } from "./parts.mjs";
+import { bulb, concreteFace, glassPane, label3d, plankFace, pole, rustPatch, wireMesh } from "./parts.mjs";
 
 /**
  * 路灯：水泥墩 + **锥形杆**（四段，越往上越细）+ 检修门 + 悬臂 + 灯头，夜里在地上
@@ -170,19 +170,8 @@ export function guardrail(ctx, w, h, t, seed) {
 export function chainfence(ctx, w, h, t, seed) {
   const n = 3;
   for (let i = 0; i < n; i++) pole(ctx, -w / 2 + (w / (n - 1)) * i, w * 0.05, h, t.steel);
-  ctx.strokeStyle = "rgba(180,192,210,.55)";
-  ctx.lineWidth = 0.018;
-  const step = w * 0.14;
-  for (let k = -8; k <= 14; k++) {
-    ctx.beginPath();
-    ctx.moveTo(-w / 2 + k * step, 0);
-    ctx.lineTo(-w / 2 + k * step + h, h);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(-w / 2 + k * step, h);
-    ctx.lineTo(-w / 2 + k * step + h, 0);
-    ctx.stroke();
-  }
+  // 网格**必须**被裁进框里，理由见 `parts.mjs` 的 `wireMesh`。
+  wireMesh(ctx, { x0: -w / 2, x1: w / 2, y0: 0, y1: h }, w * 0.14, "rgba(180,192,210,.55)", 0.018);
   ctx.strokeStyle = "rgba(210,220,236,.7)";
   ctx.lineWidth = 0.03;
   ctx.beginPath();

@@ -13,7 +13,7 @@ import { drawCritter } from "./critters.mjs";
 import { drawRider } from "./sprites.mjs";
 import { drawVehicle } from "./vehicles.mjs";
 import { CAR_NAME } from "./fx.mjs";
-import { PROP_SIZE, drawBuilding, propImage } from "./props.mjs";
+import { PROP_SIZE, drawBuilding, propBox, propImage } from "./props.mjs";
 import { WEAPONS } from "../../sim/weapons.mjs";
 import { drawPickup } from "./weaponsart.mjs";
 import { CRITTERS } from "../../sim/critters.mjs";
@@ -126,7 +126,10 @@ function drawProp(ctx, cam, tbl, prop) {
   if (occluded(S, cam, prop.x, ground, prop.z)) return;
   const p = project(cam, tbl, prop.x, ground, prop.z);
   if (!p || p.ppm < 0.02) return;
-  const w = size[0] * prop.s * p.ppm, h = size[1] * prop.s * p.ppm;
+  // 贴图框由 `propBox` 算：发光的道具（路灯、探照灯）画布要留余量，
+  // 否则光锥会被裁成一条硬边。留的是透明的边，不影响道具本身的大小。
+  const box = propBox(prop.kind, p.ppm * prop.s);
+  const w = box.w, h = box.h;
   if (p.sx + w < -40 || p.sx - w > cam.W + 40 || h < 2) return;
   // 大气透视：远处的东西往天色里化。没有这一步，两百米外的树和眼前的树一样黑，
   // 画面就是一张平贴的贴纸——这是伪 3D 里最便宜也最有效的一笔纵深感。

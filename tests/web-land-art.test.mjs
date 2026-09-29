@@ -16,10 +16,10 @@ import { MODES } from "../sim/maps.mjs";
 import { GROUNDS, tonesOf } from "../web/js/grounds.mjs";
 import { BY_MODE, PALETTES } from "../web/js/skies.mjs";
 import { backdrop, skyIds, skyOf } from "../web/js/sky.mjs";
-import { PROP_KINDS, PROP_SIZE, drawProp, hasProp, propImage } from "../web/js/props.mjs";
+import { PROP_KINDS, PROP_SIZE, drawProp, hasProp, propImage, propPad } from "../web/js/props.mjs";
 import { drawBuilding } from "../web/js/buildings.mjs";
 import { drawCritter, hasCritterArt } from "../web/js/critters.mjs";
-import { assertBalanced, assertSane, fingerprint, spyCtx } from "./helpers/spy-ctx.mjs";
+import { assertBalanced, assertSane, bounds, fingerprint, spyCtx } from "./helpers/spy-ctx.mjs";
 
 const MODE_IDS = Object.keys(MODES);
 
@@ -129,6 +129,43 @@ test("三十九种道具每一种都画得出来，而且两两不是同一件",
     }
   }
   assert.equal(seen.size, PROP_KINDS.length - 1);
+});
+
+/**
+ * 一件道具的贴图是一块**固定大小的画布**：画到框外面的部分会被直接切掉，画面上
+ * 就是一条笔直的硬边。所以这不是审美问题，是"光锥只剩一小条""树冠被切平"这种事
+ * 的成因。
+ *
+ * 判据**从画法本身量出来**，不是把 `PROP_PAD` 抄一遍：拿画笔轨迹量出这幅画真正
+ * 占多宽，再看余量表够不够。所以它同时管两头——画宽了会被抓，余量表忘了改也会被抓。
+ * 每边再留 `EDGE` 米的富余，因为轨迹里量不出描边宽度和渐变。
+ */
+const EDGE = 0.1;
+/** 这件道具需要多少余量才装得下（往上取整到 0.05，省得表里是一串 3.86）。 */
+const padFor = (widest, w) => Math.ceil((widest + EDGE) * 2 / w * 20) / 20;
+
+test("三十九种道具都画在自己的贴图框里，画出去的部分会被裁掉", () => {
+  const short = [], tooTall = [];
+  for (const kind of PROP_KINDS) {
+    if (kind === "building") continue; // 楼房不走贴图，现画
+    const [w, h] = PROP_SIZE[kind];
+    const spy = spyCtx();
+    drawProp(spy.ctx, "city", kind, w, h, 7);
+    const b = bounds(spy.ops);
+    const [padX, padY] = propPad(kind);
+    const half = w * padX / 2;
+    const widest = Math.max(b.x1, -b.x0);
+    if (half < widest + EDGE) {
+      short.push(`${kind} 要 ±${(widest + EDGE).toFixed(2)} 米，框只有 ±${half.toFixed(2)}（横向余量该写 ${padFor(widest, w)}）`);
+    }
+    // 纵向同理：冒出去的部分是塔顶、树梢，齐头切下去最显眼
+    const top = h * padY;
+    if (top < b.y1 + EDGE) {
+      tooTall.push(`${kind} 要 ${(b.y1 + EDGE).toFixed(2)} 米高，框只有 ${top.toFixed(2)}（纵向余量该写 ${padFor(b.y1, h)}）`);
+    }
+  }
+  assert.deepEqual(short, [], `这些道具会把画出去的部分裁掉：\n  ${short.join("\n  ")}`);
+  assert.deepEqual(tooTall, [], `这些道具比它声明的高度还高：\n  ${tooTall.join("\n  ")}`);
 });
 
 test("同一件道具换一条路就是另一种材质：木屋在雪原和沙漠里不该一个色", () => {
