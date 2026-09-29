@@ -60,14 +60,4 @@ export const BOT_NAMES = [
 /** 车队/队伍名，结算页用。 */
 export const TEAM_TAGS = ["赤", "青", "黄", "白"];
 
-/** 赛前播报与结算文案。放表里是为了让"改一句话"不用碰逻辑。 */
-export const LINES = {
-  start: ["油门到底", "别撞大运", "上啊"],
-  fling: "大运起飞！",
-  wreck: "摔车",
-  downed: "被撂倒",
-  finish: "冲线",
-  lastLap: "最后一段",
-};
-
 export const laneOffset = (lanes, i) => (i - (lanes - 1) / 2) * LANE_W;
