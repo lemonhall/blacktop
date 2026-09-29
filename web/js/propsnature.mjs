@@ -135,23 +135,43 @@ export function redwood(ctx, w, h, t, seed) {
     const y0 = h * (0.02 + hash2(seed, i) * 0.06);
     ctx.fillRect(x, y0, bw * 0.06, h * (0.3 + hash2(seed, i + 7) * 0.4));
   }
-  // 树冠：九层，越往上越窄；下面几层被树干劈成左右两片
-  for (let i = 0; i < 9; i++) {
-    const f = i / 9;
-    const y = h * (0.3 + f * 0.66);
-    const rw = w * (0.5 - f * 0.32) * (0.86 + hash2(seed, i + 20) * 0.28);
-    const green = hgrad(ctx, -rw, rw, y, [
-      [0, shade(t.leaf2, 0.26)], [0.4, t.leaf], [1, shade(t.leaf, -0.44)],
-    ]);
-    const tip = y + h * (0.1 - f * 0.04);
-    if (f < 0.42) {
-      poly(ctx, [
-        [-rw * 0.12, tip], [-rw, y - h * 0.012], [rw * 0.12, y - h * 0.012], [rw * 0.12, tip],
-      ], green);
-    } else {
-      poly(ctx, [[0, tip], [-rw, y - h * 0.012], [rw, y - h * 0.012]], green);
+  // 树冠：十二层"针叶云"。**每一层不是三角形而是一串重叠的团**——红杉的树冠是
+  // 蓬松的，画成尖三角就成了一棵放大的杉树。上面几层窄、下面几层宽，越往下越暗。
+  for (let i = 0; i < 12; i++) {
+    const f = i / 12;
+    const y = h * (0.26 + f * 0.72);
+    const rw = w * (0.46 - f * 0.3) * (0.84 + hash2(seed, i + 20) * 0.3);
+    const clumps = 3 + (i % 2);
+    for (let k = 0; k < clumps; k++) {
+      const u = (k + 0.5) / clumps;
+      const cx = -rw + u * rw * 2;
+      const cy2 = y + hash2(seed, i * 7 + k) * h * 0.02;
+      const rx = rw * (0.44 + hash2(seed, i * 5 + k) * 0.24);
+      const ry = rx * (0.5 + hash2(seed, i * 3 + k + 4) * 0.3);
+      // 光从左上来：左上的一团最亮，右下压暗
+      const lit = shade(t.leaf2, 0.3 - f * 0.2);
+      const dark = shade(t.leaf, -0.3 - f * 0.14);
+      ctx.fillStyle = hgrad(ctx, cx - rx, cx + rx, cy2, [
+        [0, lit], [0.42, t.leaf], [1, dark],
+      ]);
+      ctx.beginPath();
+      ctx.ellipse(cx, cy2, rx, ry, 0, 0, TAU);
+      ctx.fill();
+      // 背光边缘：叶子对着光的那一侧透出来的亮线，让树冠不至于是一坨墨
+      ctx.strokeStyle = `rgba(180,214,150,${(0.16 - f * 0.08).toFixed(2)})`;
+      ctx.lineWidth = Math.max(0.02, rx * 0.12);
+      ctx.beginPath();
+      ctx.ellipse(cx, cy2, rx * 0.9, ry * 0.9, 0, Math.PI * 1.05, Math.PI * 1.75);
+      ctx.stroke();
     }
   }
+  // 树梢那一撮：往上再收一根细枝，红杉的顶是尖的
+  ctx.strokeStyle = shade(t.leaf, -0.2);
+  ctx.lineWidth = Math.max(0.03, bw * 0.5);
+  ctx.beginPath();
+  ctx.moveTo(0, h * 0.94);
+  ctx.lineTo(0, h);
+  ctx.stroke();
 }
 
 /** 棕榈：弯的树干 + 七片下垂的叶。海崖公路的那一笔。 */

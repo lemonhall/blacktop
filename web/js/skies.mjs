@@ -52,14 +52,23 @@ export const PALETTES = {
   },
   // 红杉林：天几乎看不见，光从树缝里漏下来，贴地一层绿雾
   forest: {
-    sky: [[0, "#0d1a0a"], [0.34, "#1e3212"], [0.62, "#40541c"], [0.84, "#8a8c3c"], [1, "#d6cb84"]],
-    layers: ["shafts", "mist", "standing", "standing", "canopy"],
-    shafts: { count: 9, color: "rgba(255,246,190,", alpha: 0.2 },
+    // 顶上那一档**不能太黑**：树冠已经压在上面了，天空再黑，远景就成了一堵墙。
+    // 留一点发绿的亮，人才能感觉到"前面的路是往林子深处去的"。
+    sky: [[0, "#16270f"], [0.34, "#26401a"], [0.62, "#4a6420"], [0.84, "#8f9440"], [1, "#ded291"]],
+    // 次序是有讲究的：**光柱画在最后**。上一版光柱垫在最底下，被二十几根树干盖得
+    // 只剩一点影子——林子的"深"全靠这几道光，它们必须落在树干**前面**。
+    layers: ["glow", "mist", "standing", "standing", "canopy", "shafts"],
+    // 路尽头的亮：一条林道如果尽头也是黑的，看着就像撞墙
+    glow: { x: 0.5, y: 0.96, r: 0.34, color: "rgba(226,238,166,.42)" },
+    shafts: { count: 11, color: "rgba(255,246,190,", alpha: 0.3 },
     standing: [
-      { color: "#0c180a", count: 24, seed: 61, w: 0.05, branch: false },
-      { color: "#15240d", count: 30, seed: 67, w: 0.036, branch: true, shade: "rgba(10,20,8,.5)" },
+      { color: "#0e1c0b", count: 20, seed: 61, w: 0.045, branch: false },
+      { color: "#1d2f14", count: 26, seed: 67, w: 0.032, branch: true, shade: "rgba(10,20,8,.42)" },
     ],
-    canopy: { count: 17, seed: 71, color: "#0a1408", color2: "#132009" },
+    canopy: {
+      count: 15, seed: 71, color: "#0c1809", color2: "#16240e",
+      rim: "rgba(178,208,120,.22)",
+    },
     mist: {
       depth: 0.34, none: "rgba(180,200,150,0)",
       mid: "rgba(186,204,152,.3)", bot: "rgba(206,216,168,.44)",

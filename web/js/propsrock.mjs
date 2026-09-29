@@ -135,7 +135,10 @@ export function haybale(ctx, w, h, t, seed) {
 export function tumble(ctx, w, h, t, seed) {
   const r = Math.min(w, h) * 0.5, cy = r * 1.06;
   ctx.lineCap = "round";
-  ctx.strokeStyle = shade(t.wood, -0.06);
+  // 颜色要"干"：枯草是发白的。上一版用的是木质本色（深棕），在柏油上几乎看不见，
+  // 只剩一团橘色的影子——风滚草在画面上是**一掠而过的一团**，它必须先立得住。
+  const dry = shade(t.wood, 0.46), dead = shade(t.wood, 0.1);
+  ctx.strokeStyle = dry;
   for (let i = 0; i < 22; i++) {
     const a0 = hash2(seed, i * 3) * TAU;
     const len = r * (0.55 + hash2(seed, i * 3 + 1) * 0.95);
@@ -143,7 +146,8 @@ export function tumble(ctx, w, h, t, seed) {
     const x0 = Math.cos(a0) * r * 0.26, y0 = cy + Math.sin(a0) * r * 0.22;
     const x1 = Math.cos(a0 + bend * 0.34) * len, y1 = cy + Math.sin(a0 + bend * 0.34) * len * 0.88;
     const mx = (x0 + x1) / 2 + Math.cos(a0 + 1.5) * len * 0.26;
-    ctx.lineWidth = 0.018 + hash2(seed, i + 200) * 0.016;
+    ctx.strokeStyle = i % 3 === 0 ? dead : dry;
+    ctx.lineWidth = 0.024 + hash2(seed, i + 200) * 0.02;
     ctx.beginPath();
     ctx.moveTo(x0, y0);
     ctx.lineTo(mx, (y0 + y1) / 2 + 0.05);

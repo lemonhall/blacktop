@@ -198,14 +198,28 @@ const PAINT = {
     }
   },
   canopy: (p, ctx, w, h) => {
-    // 头顶的树叶：一排压得很低的暗色圆叶。**天只剩下缝**——红杉林道就是这个感觉
-    for (let i = 0; i < p.canopy.count; i++) {
-      const x = hash2(p.canopy.seed, i) * w * 1.12 - w * 0.06;
-      const r = h * (0.09 + hash2(p.canopy.seed + 1, i) * 0.17);
-      ctx.fillStyle = i % 3 === 0 ? p.canopy.color2 : p.canopy.color;
-      ctx.beginPath();
-      ctx.ellipse(x, h * 0.05 - r * 0.4, r * 1.6, r, 0, 0, Math.PI * 2);
-      ctx.fill();
+    // 头顶的树叶：**两排**压得很低的圆叶，天只剩下缝——红杉林道就是这个感觉。
+    // 上一版只有一排、全是最深的那个绿，画出来是一片黑的横带（"一堵墙"）。
+    // 两排 + 每片叶子朝下的一圈透光边，才有"头顶是活的树冠"这回事。
+    const c = p.canopy;
+    for (const [row, yAt, scale, color] of [
+      [0, 0.06, 1.0, c.color], [1, 0.2, 0.72, c.color2],
+    ]) {
+      const n = Math.round(c.count * (row ? 1.5 : 1));
+      for (let i = 0; i < n; i++) {
+        const x = hash2(c.seed + row * 31, i) * w * 1.14 - w * 0.07;
+        const r = h * (0.075 + hash2(c.seed + 1 + row * 17, i) * 0.15) * scale;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.ellipse(x, h * yAt - r * 0.4, r * 1.7, r, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // 背光边：光柱里的亮绿擦过叶缘，低头看是一片黑，抬头看才是活的
+        ctx.strokeStyle = c.rim;
+        ctx.lineWidth = Math.max(1, r * 0.16);
+        ctx.beginPath();
+        ctx.ellipse(x, h * yAt - r * 0.4, r * 1.6, r * 0.9, 0, Math.PI * 0.15, Math.PI * 0.85);
+        ctx.stroke();
+      }
     }
   },
   mist: (p, ctx, w, h) => {
