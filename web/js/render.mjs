@@ -1,153 +1,228 @@
 /**
- * 主渲染：地面、场景物件、单位、子弹、风暴、跳字。
+ * 把一帧画面拼出来：天空 → 路面 → 精灵 → 屏幕上层的字与光。
  *
- * 逐行移植自原单机版，唯一的结构性变化是"所有输入都从 V（视图对象）来"，
- * 而不是读一堆模块级全局变量。这样同一段画法既能画权威快照，也能画预测位置，
- * 而且再也不会出现"改了一个全局变量，另一个界面莫名其妙跟着变"。
- *
- * 这个文件只管**相机、排序、裁剪**这几件事——"每样东西长什么样"都在
- * `arena-draw.mjs` 里。分开的理由很实在：一个是"什么时候画"，一个是"画成什么"，
- * 合在一起就会长成三百多行的函数堆，改一处就得通读全文。
+ * 顺序就是全部的设计：伪 3D 没有深度缓冲，**谁后画谁在上面**。
+ * 所以这里只维护一件事——所有立体物按 z 从远到近排好队，一个接一个贴上去。
+ * 天与路是背景，字是前景，中间夹着的那一层才是"世界"。
  */
 
-import { TILE, GRID, WORLD, clamp } from "/sim/constants.mjs";
-import { cell } from "/sim/map.mjs";
-import { cosmeticRng } from "/sim/rng.mjs";
-import { rr, ellipse, poly, line, drawCrate, drawBush, drawWall } from "./sprites.mjs";
 import { FX, S } from "./state.mjs";
-import {
-  allyTeam, bulletColor, drawStorm, drawActor, drawAim,
-  drawWorldFeatures, drawProjectilesFX, drawObjectiveArrow,
-} from "./arena-draw.mjs";
+import { backdrop } from "./sky.mjs";
+import { buildSlices, createCamera, drawRoad, occluded, project, tonesOf } from "./road.mjs";
+import { drawRider } from "./sprites.mjs";
+import { drawVehicle } from "./vehicles.mjs";
+import { PROP_SIZE, drawBuilding, propImage } from "./props.mjs";
 
-/** 地面是一整张 WORLD×WORLD 的离屏画布，一局只画一次。 */
-export function buildGround(map) {
-  const rnd = cosmeticRng(map.seed ^ 0x5bf03635);
-  const between = (a, b) => a + rnd() * (b - a);
-  const ground = document.createElement("canvas");
-  ground.width = WORLD; ground.height = WORLD;
-  const c = ground.getContext("2d"), arena = map.mode === "control";
-  c.fillStyle = arena ? "#1a3040" : "#2b3143";
-  c.fillRect(0, 0, WORLD, WORLD);
-  for (let j = 0; j < GRID; j++) for (let i = 0; i < GRID; i++) {
-    const x = i * TILE, y = j * TILE, path = (i >= 14 && i <= 16) || (j >= 14 && j <= 16);
-    c.fillStyle = arena
-      ? (path ? "#213d4a" : (i + j) % 3 ? "#1c3242" : "#1e3545")
-      : (path ? "#353c4c" : (i + j) % 3 ? "#2c3243" : "#2d3545");
-    c.fillRect(x, y, TILE, TILE);
-    line(c, x + 4, y + TILE - 1, x + TILE - 4, y + TILE - 1, "#839faf0b", 1);
-    line(c, x + TILE - 1, y + 5, x + TILE - 1, y + TILE - 5, "#839faf0b", 1);
-    if ((i * 17 + j * 19) % 11 === 0) { rr(c, x + 9, y + 12, 20, 3, 1, "#799eaa16"); rr(c, x + 9, y + 18, 11, 2, 1, "#799eaa10"); }
+export function renderGame(ctx, view) {
+  if (!view || !S.track) return;
+  const W = S.view.w, H = S.view.h;
+  ctx.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
+  const cam = createCamera(S);
+  const tbl = buildSlices(S, cam);
+  const tone = tonesOf(S.mode);
+
+  ctx.save();
+  if (S.shake > 0.05) {
+    ctx.translate((Math.random() - 0.5) * S.shake, (Math.random() - 0.5) * S.shake);
   }
-  for (let i = 0; i < 1000; i++) {
-    c.fillStyle = ["#9dbbc211", "#cceee80d", "#4d809818"][Math.floor(rnd() * 3)];
-    c.fillRect(between(0, WORLD), between(0, WORLD), between(1, 3), between(1, 3));
-  }
-  for (const x of [14 * TILE, 17 * TILE]) {
-    line(c, x, 2 * TILE, x, WORLD - 2 * TILE, "#45868129", 2);
-    for (let y = 3 * TILE; y < WORLD - 3 * TILE; y += 256) line(c, x, y, x, y + 35, "#61c7b655", 3);
-  }
-  for (const y of [14 * TILE, 17 * TILE]) {
-    line(c, 2 * TILE, y, WORLD - 2 * TILE, y, "#45868129", 2);
-    for (let x = 3 * TILE; x < WORLD - 3 * TILE; x += 256) line(c, x, y, x + 35, y, "#61c7b655", 3);
-  }
-  for (let j = 0; j < GRID; j++) for (let i = 0; i < GRID; i++) {
-    if (cell(map, i, j) !== 2) continue;
-    const x = i * TILE, y = j * TILE;
-    rr(c, x - 2, y - 2, 68, 68, 7, "#162d43"); rr(c, x, y, 64, 64, 5, "#21576d");
-    for (let z = 0; z < 5; z++) { const wx = x + between(5, 44), wy = y + between(5, 59); line(c, wx, wy, wx + between(7, 18), wy, "#6cc5dc35", 2); }
-  }
-  if (arena) for (const [px, py] of [[15.5, 23.5], [15.5, 7.5]]) {
-    const col = py > 15 ? "#63efdb" : "#ed88ad";
-    ellipse(c, px * TILE, py * TILE, 125, 73, col + "08", col + "26", 2);
-    for (let i = -3; i <= 3; i++) line(c, px * TILE + i * 23 - 6, py * TILE + 80, px * TILE + i * 23 + 6, py * TILE + 67, col + "40", 3);
-  }
-  c.save(); c.translate(WORLD / 2, WORLD / 2); c.globalAlpha = .04; c.rotate(-Math.PI / 2);
-  c.font = "900 160px Arial"; c.textAlign = "center"; c.fillStyle = "#b7f5e1";
-  c.fillText(arena ? "NEON CIRCUIT" : "DUST / SECTOR", 0, -250);
-  c.restore();
-  return ground;
+  const sky = backdrop(S.mode, W, Math.ceil(cam.horizon) + 2, cam.horizon);
+  ctx.drawImage(sky, 0, 0);
+  ctx.fillStyle = tone.shoulder[0];
+  ctx.fillRect(0, cam.horizon - 1, W, H - cam.horizon + 1);
+  drawRoad(ctx, cam, tbl, S);
+  drawSkid(ctx, cam, tbl);
+  drawWorld(ctx, cam, tbl, view);
+  drawFx(ctx, cam, tbl);
+  ctx.restore();
+
+  drawOverlays(ctx, view, cam);
 }
 
-export function renderGame(ctx, V, ground) {
-  if (!ground) return;
-  const { view } = S;
-  ctx.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
-  ctx.clearRect(0, 0, view.w, view.h);
-  ctx.fillStyle = "#0d1a2b"; ctx.fillRect(0, 0, view.w, view.h);
-  const sx = (Math.random() - .5) * S.shake, sy = (Math.random() - .5) * S.shake;
-  ctx.save();
-  ctx.translate(view.w / 2 + sx, view.h / 2 + sy);
-  ctx.scale(view.zoom, view.zoom);
-  ctx.translate(-S.cam.x, -S.cam.y);
-  const left = S.cam.x - view.w / (2 * view.zoom) - 100, right = S.cam.x + view.w / (2 * view.zoom) + 100;
-  const top = S.cam.y - view.h / (2 * view.zoom) - 130, bottom = S.cam.y + view.h / (2 * view.zoom) + 130;
-
-  ctx.drawImage(ground, 0, 0);
-  drawWorldFeatures(ctx, V);
-  for (const b of S.map.bushes) {
-    if (b.x <= left - 64 || b.x >= right || b.y <= top - 64 || b.y >= bottom) continue;
-    const near = V.player && V.player.alive && V.player.x > b.x - 25 && V.player.x < b.x + 89 && V.player.y > b.y - 25 && V.player.y < b.y + 89;
-    drawBush(ctx, b.x, b.y, 64, 64, V.time, near ? .72 : 1);
-  }
-  drawAim(ctx, V);
-  for (const cube of V.cubes) {
-    if (cube.x < left || cube.x > right || cube.y < top || cube.y > bottom) continue;
-    const yy = cube.y - 8 + Math.sin(V.time * 3 + cube.x * .01) * 3;
-    ellipse(ctx, cube.x, cube.y + 9, 15, 6, "#5d7d442c");
-    ctx.save(); ctx.shadowColor = "#c5ed75"; ctx.shadowBlur = 14;
-    poly(ctx, [[cube.x, yy - 14], [cube.x + 12, yy], [cube.x, yy + 15], [cube.x - 12, yy]], "#74efc9", "#648951", 2);
-    ctx.restore();
-    poly(ctx, [[cube.x, yy - 11], [cube.x + 9, yy], [cube.x, yy + 2], [cube.x - 8, yy]], "#caffea");
-    line(ctx, cube.x, yy + 2, cube.x, yy + 12, "#9bc960", 2);
-  }
-  for (const r of FX.rings) {
-    ctx.save(); ctx.globalAlpha = clamp(r.life / r.total, 0, 1);
-    const radius = r.max * (1 - r.life / r.total);
-    ellipse(ctx, r.x, r.y, radius, radius * .78, null, r.color, 3 + r.life * 4);
-    ctx.restore();
-  }
-
-  const drawables = [];
-  for (const w of S.map.walls) if (w.x > left - 64 && w.x < right && w.y > top - 64 && w.y < bottom) drawables.push({ y: w.y + 58, fn: () => drawWall(ctx, w) });
-  for (const b of V.boxes) if (b.x > left && b.x < right && b.y > top && b.y < bottom) drawables.push({ y: b.y + 23, fn: () => drawCrate(ctx, b.x, b.y, 1, b.hp / b.maxHp) });
-  for (const a of V.actors) if (a.al && a.x > left && a.x < right && a.y > top && a.y < bottom) drawables.push({ y: a.y + 14, fn: () => drawActor(ctx, V, a) });
-  drawables.sort((a, b) => a.y - b.y).forEach(d => d.fn());
-
-  for (const b of V.bullets) {
-    ctx.save();
-    const color = bulletColor(V, b);
-    ctx.strokeStyle = color; ctx.lineWidth = b.r * 2; ctx.lineCap = "round";
-    ctx.shadowColor = color; ctx.shadowBlur = b.superShot ? 20 : 9;
-    const len = b.superShot ? 32 : 15, speed = Math.hypot(b.vx, b.vy) || 1;
-    ctx.beginPath();
-    ctx.moveTo(b.x - b.vx / speed * len, b.y - b.vy / speed * len);
-    ctx.lineTo(b.x, b.y); ctx.stroke();
-    ctx.shadowBlur = 0; ctx.lineWidth = b.r * .7; ctx.strokeStyle = "#fffce3"; ctx.stroke();
-    ctx.restore();
-  }
-  drawProjectilesFX(ctx, V);
-  for (const p of FX.particles) {
-    ctx.globalAlpha = clamp(p.life / p.max, 0, 1);
-    rr(ctx, p.x - p.size / 2, p.y - p.size / 2, p.size, p.size, 1, p.color);
+/** 胎痕：压在路面上，所以画在精灵之前——它是路面的一部分，不是空气里的东西。 */
+function drawSkid(ctx, cam, tbl) {
+  ctx.fillStyle = "rgba(16,16,20,.42)";
+  for (const k of FX.skid) {
+    const p = project(cam, tbl, k.x, S.track.hillAt(k.z), k.z);
+    if (!p || p.ppm < 0.3) continue;
+    const w = 0.26 * p.ppm, h = 1.1 * p.ppm;
+    ctx.globalAlpha = Math.min(0.5, k.life / k.max * 0.6);
+    ctx.fillRect(p.sx - w / 2, p.sy - h, w, h);
   }
   ctx.globalAlpha = 1;
-  drawStorm(ctx, V);
-  for (const f of FX.floaters) {
-    ctx.save(); ctx.globalAlpha = clamp(f.life / .2, 0, 1);
-    ctx.font = `900 ${f.big ? 24 : 17}px "Trebuchet MS","Microsoft YaHei",sans-serif`;
-    ctx.textAlign = "center"; ctx.lineWidth = 3.5;
-    ctx.strokeStyle = "#3a4935"; ctx.strokeText(f.text, f.x, f.y);
-    ctx.fillStyle = f.color; ctx.fillText(f.text, f.x, f.y);
-    ctx.restore();
+}
+
+/** 粒子与跳字：在"世界的空气里"，所以画在所有立体物之后。 */
+function drawFx(ctx, cam, tbl) {
+  for (const p of FX.smoke) {
+    const q = project(cam, tbl, p.x, p.y, p.z);
+    if (!q || q.ppm < 0.25) continue;
+    ctx.globalAlpha = Math.max(0, p.life / p.max) * 0.75;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(q.sx, q.sy, Math.max(1, p.size * q.ppm), 0, Math.PI * 2);
+    ctx.fill();
   }
-  ctx.restore();
-  drawObjectiveArrow(ctx, V);
-  if (V.player && V.player.al && Math.hypot(V.player.x - V.ring.x, V.player.y - V.ring.y) > V.ring.r) {
-    const g = ctx.createRadialGradient(view.w / 2, view.h / 2, view.h * .25, view.w / 2, view.h / 2, view.h * .8);
-    g.addColorStop(0, "#7c244100"); g.addColorStop(1, "#97285655");
-    ctx.fillStyle = g; ctx.fillRect(0, 0, view.w, view.h);
+  for (const p of FX.sparks) {
+    const q = project(cam, tbl, p.x, p.y, p.z);
+    if (!q || q.ppm < 0.25) continue;
+    ctx.globalAlpha = Math.max(0, p.life / p.max);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(q.sx - p.size * q.ppm, q.sy - p.size * q.ppm, p.size * q.ppm * 2, p.size * q.ppm * 2);
+  }
+  ctx.globalAlpha = 1;
+  for (const f of FX.floaters) {
+    const q = project(cam, tbl, f.x, f.y, f.z);
+    if (!q || q.ppm < 0.4) continue;
+    ctx.globalAlpha = Math.max(0, f.life / f.max);
+    label(ctx, q.sx, q.sy, f.text, f.color, (f.big ? 1.15 : 0.85) * q.ppm + 8);
+  }
+  ctx.globalAlpha = 1;
+}
+
+/** 所有立体物：按 z 从远到近排队，一个队列解决遮挡。 */
+function drawWorld(ctx, cam, tbl, view) {
+  const queue = [];
+  const far = cam.camZ + 660;
+  for (const prop of S.track.propsBetween(cam.camZ - 8, far)) {
+    queue.push({ z: prop.z, kind: "prop", item: prop });
+  }
+  for (const v of view.traffic) queue.push({ z: v.z, kind: "traffic", item: v });
+  for (const r of view.racers) queue.push({ z: r.z, kind: "racer", item: r });
+  queue.sort((a, b) => b.z - a.z);
+  for (const entry of queue) {
+    if (entry.kind === "prop") drawProp(ctx, cam, tbl, entry.item);
+    else if (entry.kind === "traffic") drawTraffic(ctx, cam, tbl, entry.item);
+    else drawRacerSprite(ctx, cam, tbl, entry.item, view);
   }
 }
 
-export { drawActor as drawActorSprite, allyTeam };
+function drawProp(ctx, cam, tbl, prop) {
+  const track = S.track;
+  const size = PROP_SIZE[prop.kind];
+  if (!size) return;
+  const ground = track.hillAt(prop.z);
+  if (occluded(S, cam, prop.x, ground, prop.z)) return;
+  const p = project(cam, tbl, prop.x, ground, prop.z);
+  if (!p || p.ppm < 0.02) return;
+  const w = size[0] * prop.s * p.ppm, h = size[1] * prop.s * p.ppm;
+  if (p.sx + w < -40 || p.sx - w > cam.W + 40 || h < 2) return;
+  if (prop.kind === "building") {
+    const tone = S.mode === "wild" ? "#8a8479" : "#2c2f3f";
+    drawBuilding(ctx, { sx: p.sx, baseY: p.sy, s: p.ppm * prop.s, seed: prop.i, width: size[0], height: size[1], tone });
+    return;
+  }
+  const img = propImage(track.ground, prop.kind);
+  ctx.drawImage(img, p.sx - w / 2, p.sy - h, w, h);
+}
+
+function drawTraffic(ctx, cam, tbl, v) {
+  const ground = S.track.hillAt(v.z);
+  if (v.state === "run" && occluded(S, cam, v.x, ground, v.z)) return;
+  const p = project(cam, tbl, v.x, ground, v.z);
+  if (!p || p.ppm < 0.03) return;
+  drawVehicle(ctx, {
+    cx: p.sx, baseY: p.sy, s: p.ppm, kind: v.kind, id: v.id,
+    dir: v.dir, spin: v.spin, air: v.y > 0.05 ? v.y : 0,
+  });
+  // 大运是这一局的笑点，值得头顶挂一行字——只在近处挂，远了反而乱。
+  if (v.kind === "dayun" && p.ppm > 1.1 && v.state === "flung") {
+    label(ctx, p.sx, p.sy - 5.2 * p.ppm, "大运起飞!", "#ffd23f", 1.05 * p.ppm);
+  }
+}
+
+function drawRacerSprite(ctx, cam, tbl, r, view) {
+  const ground = S.track.hillAt(r.z);
+  if (r.state === "ride" && occluded(S, cam, r.x, ground, r.z)) return;
+  const p = project(cam, tbl, r.x, ground, r.z);
+  if (!p || p.ppm < 0.05) return;
+  const me = r.id === (view.mine ? view.mine.id : -1);
+  const swing = me && S.swing > 0 ? Math.max(r.swing, S.swing) : r.swing;
+  drawRider(ctx, {
+    cx: p.sx, baseY: p.sy, s: p.ppm, palette: r.palette,
+    lean: r.lean, swing, wreck: r.state === "wreck" ? Math.max(0.2, r.wreck) : 0,
+    nitro: r.nitro, flameSeed: r.id,
+  });
+  if (me) {
+    // 自己脚下的一圈光环：15 台车挤在一起时，"哪个是我"必须一眼看得见。
+    ctx.strokeStyle = "rgba(110,240,255,.75)";
+    ctx.lineWidth = Math.max(1, p.ppm * 0.05);
+    ctx.beginPath();
+    ctx.ellipse(p.sx, p.sy, p.ppm * 0.95, p.ppm * 0.28, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  // 只有真人挂名字：14 个机器人全挂上就成了一片文字墙。
+  if (r.kind === "human" && !me && p.ppm > 0.35) {
+    label(ctx, p.sx, p.sy - 2.9 * p.ppm, r.name, "#dfe8ff", Math.min(15, 0.55 * p.ppm + 8));
+  }
+}
+
+function label(ctx, x, y, text, color, size) {
+  ctx.save();
+  ctx.font = `700 ${Math.max(9, size).toFixed(1)}px system-ui, "Microsoft YaHei", sans-serif`;
+  ctx.textAlign = "center";
+  ctx.lineWidth = Math.max(2, size * 0.28);
+  ctx.strokeStyle = "rgba(4,7,14,.85)";
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+/** 前景：倒数、播报、速度线、暗角。全部是"屏幕上"的东西，不参与世界坐标。 */
+function drawOverlays(ctx, view, cam) {
+  const W = cam.W, H = cam.H;
+  const me = view.mine;
+  const speed = me ? Math.max(0, me.v) : 0;
+  if (speed > 14) {
+    const strength = Math.min(1, (speed - 14) / 26);
+    const n = Math.round(4 + strength * 9);
+    ctx.strokeStyle = `rgba(220,240,255,${0.06 + strength * 0.16})`;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < n; i++) {
+      const side = i % 2 ? 1 : -1;
+      const y = cam.horizon + (i / n) * H * 0.72 + Math.sin(i * 2.7 + performance.now() / 220) * 12;
+      const len = H * (0.06 + strength * 0.14);
+      ctx.beginPath();
+      ctx.moveTo(W / 2 + side * W * 0.28, y);
+      ctx.lineTo(W / 2 + side * (W * 0.28 + len * 0.5), y + len);
+      ctx.stroke();
+    }
+  }
+  const vig = ctx.createRadialGradient(W / 2, H * 0.52, H * 0.3, W / 2, H * 0.5, H * 0.95);
+  vig.addColorStop(0, "rgba(0,0,0,0)");
+  vig.addColorStop(1, "rgba(0,0,0,.5)");
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, W, H);
+
+  if (view.countdown > 0) {
+    const n = Math.ceil(view.countdown);
+    const text = n > 3 ? "准备" : n > 1 ? String(n - 1) : "GO!";
+    const frac = 1 - (view.countdown % 1);
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, 0.35 + frac * 1.4);
+    ctx.translate(W / 2, H * 0.34);
+    ctx.scale(1 + (1 - frac) * 0.5, 1 + (1 - frac) * 0.5);
+    ctx.font = `900 ${Math.round(H * 0.18)}px system-ui, "Microsoft YaHei", sans-serif`;
+    ctx.textAlign = "center";
+    ctx.lineWidth = H * 0.02; ctx.strokeStyle = "rgba(6,9,18,.9)";
+    ctx.strokeText(text, 0, 0); ctx.fillStyle = "#ffe874"; ctx.fillText(text, 0, 0);
+    ctx.restore();
+  }
+  if (FX.announce) {
+    const age = (performance.now() - FX.announce.at) / 1000;
+    if (age < 2.4) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, 1 - age / 2.4);
+      ctx.translate(W / 2, H * 0.24 - age * 14);
+      ctx.textAlign = "center";
+      ctx.font = `900 ${Math.round(H * 0.062)}px system-ui, "Microsoft YaHei", sans-serif`;
+      ctx.lineWidth = H * 0.012; ctx.strokeStyle = "rgba(6,9,18,.9)";
+      ctx.strokeText(FX.announce.title, 0, 0);
+      ctx.fillStyle = FX.announce.color || "#ffd23f";
+      ctx.fillText(FX.announce.title, 0, 0);
+      ctx.font = `600 ${Math.round(H * 0.026)}px system-ui, "Microsoft YaHei", sans-serif`;
+      ctx.fillStyle = "#dfe8ff"; ctx.fillText(FX.announce.sub || "", 0, H * 0.05);
+      ctx.restore();
+    } else FX.announce = null;
+  }
+}

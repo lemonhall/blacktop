@@ -159,6 +159,13 @@ export function settle(w, reason = "finish") {
     winner: (rows[0] || {}).name || "",
     payout: payoutOf(rows),
   };
+  // **结算就是把世界停表**，这一行不能省。
+  //
+  // 房间的时钟是"世界还是 live 就继续推进"，广播结算的唯一触发点是节拍器发现
+  // `world.phase !== "live"`。少了这一行，症状极其安静：名次算出来了、`results`
+  // 躺在世界里，但没人知道该收尾——于是世界接着跑，玩家撞了线还在原地骑，
+  // 结算页永远不会出现，房间只能等 30 分钟被回收。
+  w.phase = "over";
   w.endedAt = w.time;
   w.endReason = reason;
   return w.results;

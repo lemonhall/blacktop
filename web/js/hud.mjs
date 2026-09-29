@@ -1,232 +1,181 @@
 /**
- * HUD：把一帧视图对象（V）映射到 DOM。
+ * 仪表盘：屏幕下方那一整块 HUD。
  *
- * 这个模块只**读** V 和 S，不碰网络也不碰模拟。它存在的原因很实际：原版的 HUD 是
- * 直接读一堆全局变量的，搬到联机版之后"谁的数据"变得很关键——血条读的是
- * **最新快照里我自己的实体**，而不是本地预测的位置。判定在服务端，界面就得显示判定。
+ * 按 1996 年 PC 版《暴力摩托》的排布来——**左表 + 左体力条 / 中央名次与计时 /
+ * 右表 + 右体力条**。这不是怀旧，是它恰好把竞速里同时要看的三件事排在了一条
+ * 视线高度上：我在第几、我跑多快、我还剩多少体力能打人。
+ *
+ * 文字部分走 DOM（便宜、可选中、能上 CSS），两个圆表走 canvas（指针要每帧转）。
+ * 每帧只写**变化过的**文本，否则 60Hz 的 textContent 赋值会让长局明显掉帧。
  */
 
-import { WORLD, TILE, clamp, clock } from "/sim/constants.mjs";
-import { GADGETS, ZONE_POINTS, MODES, heroOf } from "/sim/data.mjs";
-import { contractsOf } from "/sim/flow.mjs";
-import { ellipse, poly } from "./sprites.mjs";
-import { drawPortrait } from "./showcase.mjs";
-import { FX, S } from "./state.mjs";
+import { clock } from "/sim/constants.mjs";
+import { NITRO_CD } from "/sim/racer.mjs";
+import { FX } from "./state.mjs";
 
 const $ = id => document.getElementById(id);
-const mini = () => $("minimap").getContext("2d");
-let lastHud = -1;
+const last = {};
 
-/** 大招 / 闪避 / 装置的冷却快照，用来画按钮上的扇形遮罩。 */
-const gadgetCd = a => GADGETS[a.gd].cooldown * Math.pow(.75, (a.pk && a.pk.cooling) || 0);
-const dashCdOf = a => 6 * Math.pow(.75, (a.pk && a.pk.dash) || 0);
-
-export function bindAbilityButtons() {
-  $("dashButton").addEventListener("click", () => { S.actions |= 1; });
-  $("gadgetButton").addEventListener("click", () => { S.actions |= 2; });
-  $("superButton").addEventListener("click", () => { S.actions |= 4; });
-  const toggle = () => {
-    S.assist = !S.assist;
-    $("assistToggle").setAttribute("aria-pressed", String(S.assist));
-    $("assistGame").classList.toggle("active", S.assist);
-    $("assistGame").setAttribute("aria-pressed", String(S.assist));
-  };
-  $("assistToggle").addEventListener("click", toggle);
-  $("assistGame").addEventListener("click", toggle);
+/** 只在真的变了的时候写 DOM。一个字一个字地比，比"整块重画"便宜一个数量级。 */
+function set(id, text) {
+  if (last[id] === text) return;
+  last[id] = text;
+  const node = $(id);
+  if (node) node.textContent = text;
 }
 
-export function updateHud(V) {
-  const me = V.player;
-  if (!me) return;
-  if (V.time - lastHud < .09 && V.time > lastHud) return;
-  lastHud = V.time;
-  setStats(V, me);
-  drawMini(V);
-  updateContracts(V, me);
-  updateFeed();
-  updateAnnounce();
+export function updateHud(view) {
+  if (!view) return;
+  const me = view.mine;
+  const speed = me ? Math.round(Math.max(0, me.v) * 3.6) : 0;
+  const rival = pickRival(view);
+  drawGauge($("gaugeL"), speed, 260, "#6ef0ff", "SPEED");
+  drawGauge($("gaugeR"), rival ? Math.round(rival.v * 3.6) : 0, 260, "#ffb03a", "RIVAL");
+  set("hudSpeed", String(speed));
+  set("hudRank", me ? String(me.rank || view.myRank) : "—");
+  set("hudField", `/${view.field}`);
+  set("hudTimer", clock(view.time));
+  set("hudName", me ? me.name : "—");
+  set("hudGap", gapText(view, me));
+  set("hudRival", rival ? rival.name : "独自领跑");
+  bar("hudSta", me ? me.stamina / 100 : 0);
+  bar("hudRSta", rival ? rival.stamina / 100 : 0);
+  // 氮气槽：充好了是满格，用掉之后按冷却往回爬。能不能踩，一眼就知道。
+  bar("hudNos", me ? (me.nitroCd > 0 ? 1 - me.nitroCd / NITRO_CD : 1) : 0);
+  set("hudStaText", me ? String(Math.round(me.stamina)) : "");
+  set("hudRStaText", rival ? String(Math.round(rival.stamina)) : "");
+  progress(view, me);
+  ranks(view);
+  feed();
+  respawn(me);
 }
 
-function setStats(V, me) {
-  $("aliveValue").textContent = V.actors.filter(a => a.al).length;
-  $("gameTime").textContent = clock(V.time);
-  $("killCount").textContent = "淘汰 " + me.ki;
-  $("cubeValue").textContent = me.cu;
+const bar = (id, ratio) => {
+  const node = $(id);
+  if (node) node.style.width = `${Math.round(Math.max(0, Math.min(1, ratio)) * 100)}%`;
+};
 
-  const hp = me.hp / me.mh;
-  $("healthFill").style.width = hp * 100 + "%";
-  $("healthFill").style.background = hp < .28 ? "linear-gradient(90deg,#e56e86,#ffa78c)" : "";
-  $("healthText").textContent = `${Math.ceil(me.hp)} / ${Math.round(me.mh)}`;
-  document.querySelectorAll(".ammo-track i").forEach((el, i) => { el.style.width = clamp(me.am - i, 0, 1) * 100 + "%"; });
-
-  const pct = clamp(me.su, 0, 100), ready = pct >= 99.99;
-  $("superValue").textContent = ready ? "就绪" : Math.floor(pct) + "%";
-  $("superButton").classList.toggle("ready", ready);
-  $("superButton").style.background = ready ? "" : `conic-gradient(#c6935c ${pct * 3.6}deg,#273446 ${pct * 3.6}deg)`;
-  $("superButton").setAttribute("aria-label", ready
-    ? heroOf(me.h).superName + "已就绪"
-    : `超级技能充能 ${Math.floor(pct)}%`);
-
-  $("dashValue").textContent = me.dc > 0 ? me.dc.toFixed(1) + "s" : "闪避";
-  $("dashButton").querySelector(".cooldown-fill").style.clipPath =
-    `inset(${clamp(100 - me.dc / dashCdOf(me) * 100, 0, 100)}% 0 0 0)`;
-  $("gadgetValue").textContent = me.gc > 0 ? Math.ceil(me.gc) + "s" : GADGETS[me.gd].name;
-  $("gadgetButton").querySelector(".cooldown-fill").style.clipPath =
-    `inset(${clamp(100 - me.gc / gadgetCd(me) * 100, 0, 100)}% 0 0 0)`;
-  $("gadgetIcon").setAttribute("href", "#i-" + GADGETS[me.gd].icon);
-
-  $("matchLevel").textContent = "LV." + me.lv;
-  $("xpFill").style.width = (me.lv >= 6 ? 100 : me.xp / me.nx * 100) + "%";
-  $("playerName").textContent = me.n;
-
-  if (V.mode === "control") {
-    $("blueScore").textContent = V.score[0];
-    $("redScore").textContent = V.score[1];
-    $("blueProgress").style.width = Math.min(50, V.score[0] / 2) + "%";
-    $("redProgress").style.width = Math.min(50, V.score[1] / 2) + "%";
-    $("matchTimer").textContent = V.time >= 180 ? "加时" : clock(Math.max(0, 180 - V.time));
-    $("stormLabel").textContent = zoneLabel(V, me) + " / " + Math.ceil(40 - V.time % 40) + "s 迁移";
-    $("stormStatus").classList.toggle("danger", V.zone.ow >= 0 && V.zone.ow !== me.tm);
-  } else {
-    const outside = Math.hypot(me.x - V.ring.x, me.y - V.ring.y) > V.ring.r;
-    $("stormStatus").classList.toggle("danger", outside);
-    $("stormLabel").textContent = outside
-      ? "风暴中！回到安全区"
-      : V.time < 20 ? "风暴来袭 " + clock(Math.max(0, 20 - V.time)) : "安全区持续缩小";
+/** 右表盯的是**紧挨着我前面那台车**：追谁、什么时候动手，看它就够了。 */
+function pickRival(view) {
+  const me = view.mine;
+  if (!me) return view.racers[0] || null;
+  let best = null;
+  for (const r of view.racers) {
+    if (r.id === me.id) continue;
+    if (r.z < me.z - 4) continue;
+    if (!best || r.z < best.z) best = r;
   }
-
-  const dead = !me.al && V.phase === "live";
-  $("respawnOverlay").classList.toggle("hidden", !dead);
-  if (dead) $("respawnCounter").textContent = Math.max(1, Math.ceil(me.rs));
-  $("hitMarker").classList.toggle("show", performance.now() < S.hitUntil);
-
-  const tip = $("gameTip");
-  const drop = V.supplies.find(s => s.state === "ready");
-  if (me.ov > V.time) {
-    tip.innerHTML = `<span>超频启动</span>火力与装填加速 / ${Math.ceil(me.ov - V.time)}s`;
-    tip.style.opacity = "1";
-  } else if (drop && Math.hypot(drop.x - me.x, drop.y - me.y) < 450) {
-    tip.innerHTML = "<span>空投已落地</span>拾取：恢复生命、弹药、超能 · 火力加速 7 秒";
-    tip.style.opacity = "1";
-  } else tip.style.opacity = V.time < 10 ? "1" : "0";
+  return best || view.leader;
 }
 
-function zoneLabel(V, me) {
-  if (V.zone.ct) return "双方争夺 · 暂停计分";
-  if (V.zone.ow < 0) return "进入热点，开始占领";
-  return V.zone.ow === me.tm ? "我方占领 · 持续得分" : "敌方占领 · 立即夺回";
+function gapText(view, me) {
+  if (!me) return "";
+  const leader = view.racers.find(r => r.rank === 1);
+  if (!leader || leader.id === me.id) return "领跑";
+  const behind = me.finished ? me.finishTime - leader.finishTime : me.z - leader.z;
+  if (me.finished) return `${behind >= 0 ? "+" : ""}${behind.toFixed(2)}s`;
+  return `${Math.round(behind)}m`;
 }
 
-/** 开局的静态部分：模式、地图名、头像、装置说明。每局只做一次。 */
-export function primeMatch({ mode, mapSeed, hero, name }) {
-  const control = mode === "control";
-  $("teamScore").classList.toggle("hidden", !control);
-  $("survivalScore").classList.toggle("hidden", control);
-  $("mapHeading").innerHTML = control
-    ? "霓虹中枢<small>热点争夺 / 3V3 · 种子 " + mapSeed + "</small>"
-    : "尘星遗迹<small>荒野生存 / 混战 · 种子 " + mapSeed + "</small>";
-  $("gameTip").innerHTML = control
-    ? "<span>战术提示</span>跟随菱形指引占点 · 双方同时在圈内不计分"
-    : "<span>战术提示</span>先击碎能量箱升级 · 注意 20 秒后的风暴";
-  $("superButton").title = heroOf(hero).superName + "（Q / 右键）";
-  drawPortrait($("playerPortrait"), hero, true);
-  $("killFeed").replaceChildren();
-  $("perkStrip").replaceChildren();
-  $("playerName").textContent = name;
-}
+const progress = (view, me) => {
+  const pct = me ? Math.max(0, Math.min(1, me.z / view.finishZ)) * 100 : 0;
+  const node = $("hudMe");
+  if (node) node.style.left = `${pct}%`;
+};
 
-export function updateContracts(V, me) {
-  const rows = contractsOf({ mode: V.mode }, {
-    kills: me.ki, collected: me.co || 0, captureTime: me.cp || 0, damage: me.dd || 0,
-  });
-  $("contractRows").innerHTML = rows.map(c => {
-    const done = c.value >= c.target;
-    return `<div class="contract-row ${done ? "complete" : ""}"><span>${done ? "✓ " : ""}${c.name}</span>` +
-      `<b>${Math.min(c.value, c.target)} / ${c.target}${c.suffix || ""}</b></div>`;
-  }).join("");
-}
-
-export function updatePerks(perks, perksById) {
-  const el = $("perkStrip");
-  const parts = Object.entries(perks || {}).map(([id, n]) => {
-    const p = perksById(id);
-    return p ? `<span class="perk-chip">${p.name}${n > 1 ? " ×" + n : ""}</span>` : "";
-  }).filter(Boolean);
-  el.innerHTML = parts.join("");
-}
-
-export function updateFeed() {
-  const feed = $("killFeed");
-  const now = performance.now();
-  feed.replaceChildren();
-  for (const line of FX.feed.filter(f => now - f.at < 7000)) {
+/** 名次榜：前五名 + 我（在五名之外时）。中间那行永远是我，不让人找。 */
+function ranks(view) {
+  const box = $("rankList");
+  if (!box) return;
+  const rows = view.racers.slice(0, 5);
+  const me = view.mine;
+  if (me && !rows.includes(me)) rows.push(me);
+  const signature = rows.map(r => `${r.id}:${r.rank}:${Math.round(r.z)}`).join("|");
+  if (last.rankSig === signature) return;
+  last.rankSig = signature;
+  box.replaceChildren();
+  for (const r of rows) {
     const el = document.createElement("div");
-    el.className = "feed-line";
-    const who = document.createElement(line.mine ? "b" : "span");
-    who.textContent = line.who;
-    const mid = document.createElement("span");
-    mid.className = "feed-mid";
-    mid.textContent = " ✕ ";
-    const target = document.createElement("span");
-    target.textContent = line.target;
-    el.append(who, mid, target);
-    feed.append(el);
+    el.className = `rank-row${r.id === (me && me.id) ? " me" : ""}`;
+    const badge = document.createElement("b");
+    badge.textContent = `${r.rank || "-"}`;
+    const name = document.createElement("span");
+    name.textContent = r.name;
+    const stat = document.createElement("i");
+    stat.textContent = `${Math.round(r.v * 3.6)}`;
+    el.append(badge, name, stat);
+    box.append(el);
   }
 }
 
-function updateAnnounce() {
-  const box = $("announcement");
-  const a = FX.announce;
-  if (!a) { box.classList.remove("show"); return; }
-  if (box.dataset.at === String(a.at)) return;
-  box.dataset.at = String(a.at);
-  $("announcementTitle").textContent = a.title;
-  $("announcementSub").textContent = a.sub;
-  box.classList.remove("show");
-  void box.offsetWidth;
-  box.classList.add("show");
+/** 播报条：摔车、踢飞大运、谁冲线了。四秒之后自己淡出。 */
+function feed() {
+  const box = $("feedList");
+  if (!box) return;
+  const now = performance.now();
+  const live = FX.feed.filter(f => now - f.at < 4200);
+  const signature = live.map(f => f.at).join(",");
+  if (last.feedSig === signature) return;
+  last.feedSig = signature;
+  box.replaceChildren();
+  for (const f of live) {
+    const el = document.createElement("div");
+    el.className = "feed-row";
+    el.textContent = f.text;
+    el.style.color = f.color;
+    box.append(el);
+  }
 }
 
-/** 小地图：只画快照里有的实体，所以它天然就是"我能看见的战场"。 */
-function drawMini(V) {
-  const c = mini(), s = 160 / WORLD;
-  c.clearRect(0, 0, 160, 160);
-  c.fillStyle = "#132737"; c.fillRect(0, 0, 160, 160);
-  c.save(); c.scale(s, s);
-  c.fillStyle = "#38566b";
-  for (const w of S.map.walls) c.fillRect(w.x, w.y, TILE, TILE);
-  c.fillStyle = "#356c66";
-  for (const b of S.map.bushes) c.fillRect(b.x, b.y, TILE, TILE);
-  if (V.mode === "control") {
-    const color = V.zone.ct ? "#fed18e" : V.zone.ow === 1 ? "#ff9bb3" : "#72fce1";
-    ellipse(c, V.zone.x, V.zone.y, V.zone.r, V.zone.r, color + "25", color, 14);
-    ellipse(c, V.zone.x, V.zone.y, 25, 25, color);
-    if (V.time % 40 > 32) {
-      const next = ZONE_POINTS[(Math.floor(V.time / 40) + 1) % ZONE_POINTS.length];
-      c.setLineDash([25, 22]);
-      ellipse(c, next[0] * TILE, next[1] * TILE, V.zone.r, V.zone.r, null, "#c8e5f566", 10);
-      c.setLineDash([]);
-    }
-  } else if (V.ring.r < 3000) {
-    c.save();
-    c.beginPath(); c.rect(0, 0, WORLD, WORLD);
-    c.arc(V.ring.x, V.ring.y, V.ring.r, 0, Math.PI * 2, true);
-    c.clip("evenodd");
-    c.fillStyle = "#743c7a88"; c.fillRect(0, 0, WORLD, WORLD);
-    c.restore();
-  }
-  for (const sp of V.supplies) poly(c, [[sp.x, sp.y - 36], [sp.x + 31, sp.y], [sp.x, sp.y + 36], [sp.x - 31, sp.y]], "#d1b5ff");
-  for (const a of V.actors) {
-    if (!a.al) continue;
-    const mine = a.i === S.actorId;
-    if (mine) ellipse(c, a.x, a.y, 35, 35, "#e9fff7", "#45b6a1", 12);
-    else if (V.mode === "control" && V.player && a.tm === V.player.tm) ellipse(c, a.x, a.y, 26, 26, "#64e4d4", "#24645e", 8);
-    else ellipse(c, a.x, a.y, 24, 24, "#ff8da8", "#683e59", 8);
-  }
-  c.strokeStyle = "#c1e7f43a"; c.lineWidth = 9;
-  c.strokeRect(S.cam.x - S.view.w / (2 * S.view.zoom), S.cam.y - S.view.h / (2 * S.view.zoom),
-    S.view.w / S.view.zoom, S.view.h / S.view.zoom);
-  c.restore();
+function respawn(me) {
+  const node = $("respawn");
+  if (!node) return;
+  const wrecked = !!me && me.state === "wreck";
+  node.classList.toggle("hidden", !wrecked);
+  if (wrecked) set("respawnCount", Math.max(0, me.wreck).toFixed(1));
 }
 
-export const modeNameOf = id => (MODES[id] || MODES.control).name;
+/**
+ * 一只圆表。
+ *
+ * 画法刻意保持"老派"：一圈刻度 + 一根指针 + 一大一小两行数字。指针的角速度是
+ * 唯一能让玩家**不用看数字**就知道自己在加速还是在掉速的东西，所以它必须有，
+ * 还得够长够粗。
+ */
+export function drawGauge(canvas, value, max, color, caption) {
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const size = canvas.width;
+  const c = size / 2, r = c - 6;
+  ctx.clearRect(0, 0, size, size);
+  ctx.save();
+  ctx.beginPath(); ctx.arc(c, c, r, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(8,11,20,.82)"; ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = "rgba(150,180,215,.35)"; ctx.stroke();
+  const from = Math.PI * 0.78, to = Math.PI * 2.22;
+  for (let i = 0; i <= 10; i++) {
+    const a = from + (to - from) * (i / 10);
+    const big = i % 5 === 0;
+    ctx.beginPath();
+    ctx.moveTo(c + Math.cos(a) * (r - 6), c + Math.sin(a) * (r - 6));
+    ctx.lineTo(c + Math.cos(a) * (r - (big ? 18 : 12)), c + Math.sin(a) * (r - (big ? 18 : 12)));
+    ctx.lineWidth = big ? 3 : 1.5;
+    ctx.strokeStyle = i > 7 ? "#ff6a7a" : "rgba(190,214,240,.6)";
+    ctx.stroke();
+  }
+  const ratio = Math.max(0, Math.min(1, value / max));
+  if (ratio > 0.01) {
+    ctx.beginPath();
+    ctx.arc(c, c, r - 22, from, from + (to - from) * ratio);
+    ctx.lineWidth = 6; ctx.strokeStyle = color; ctx.stroke();
+  }
+  const a = from + (to - from) * ratio;
+  ctx.beginPath();
+  ctx.moveTo(c, c);
+  ctx.lineTo(c + Math.cos(a) * (r - 24), c + Math.sin(a) * (r - 24));
+  ctx.lineWidth = 4; ctx.lineCap = "round"; ctx.strokeStyle = "#f3f7ff"; ctx.stroke();
+  ctx.beginPath(); ctx.arc(c, c, 5, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
+  ctx.restore();
+  const label = document.getElementById(caption === "SPEED" ? "gaugeLSpeed" : "gaugeRSpeed");
+  if (label) label.textContent = `${Math.round(value)}`;
+}

@@ -49,6 +49,30 @@ export function decodeMap(msg) {
 }
 
 /**
+ * "我是哪一号车"——**名册说了算**。
+ *
+ * 快照里刻意不带 ownerId：15 台车每帧都背一个玩家 id，20Hz 下就是白白多传
+ * 十几 KB/s，而身份这东西一局只变一次（有人中途进来、或者有人退出去）。
+ * 所以身份住在 `map.roster` 里，快照只带一个短整型的 `i`。
+ *
+ * 这条约定值得单独写成一个函数：一旦某处又冒出 `r.ow`（射击版的名字），
+ * 症状不是"报错"，而是**本机预测永远不启动**——画面能动（对手在跑），但你的
+ * 油门一点作用都没有，因为默认"找不到自己"就直接 return 了。
+ */
+export function racerIdOf(roster, ownerId) {
+  if (!roster || !ownerId) return -1;
+  for (const [id, meta] of roster) if (meta.ownerId === ownerId) return id;
+  return -1;
+}
+
+/** 快照里"我"那一条原始记录；还没进场（或已被抬走）时返回 null。 */
+export function mineIn(snapshot, roster, ownerId) {
+  const id = racerIdOf(roster, ownerId);
+  if (id < 0 || !snapshot) return null;
+  return (snapshot.r || []).find(r => r.i === id) || null;
+}
+
+/**
  * 一帧快照。
  *
  * `tm` 是**世界模拟时间（秒）**，客户端在相邻两帧之间用它插值。它必须带毫秒
@@ -76,6 +100,7 @@ function racerWire(r, mine) {
     i: r.id, x: r1(r.x), z: r1(r.z), v: r1(r.v * KMH),
     st: r.state === "ride" ? 1 : 0, wk: r1(r.wreck),
     ln: r2(r.lean), sw: r2(r.swing), nl: r.nitroT > 0 ? 1 : 0,
+    nc: r2(r.nitroCd),
     sm: Math.round(r.stamina),
     rk: r.rank || 0, fi: r.finished ? 1 : 0, ft: r.finished ? r3(r.finishTime) : 0,
     d: r.downs, dy: r.dayuns, cr: r.crashes, ca: r.cash,
@@ -85,6 +110,9 @@ function racerWire(r, mine) {
     // 权威确认点：客户端从这里出发、把待确认命令重放一遍，算出"我此刻应该在哪"。
     out.ak = r.ack | 0;
     out.az = r1(r.ackZ); out.ax = r1(r.ackX);
+    // 速度与侧滑是**同一时刻**的：赛车的位置对账比射击版多两个自由度，
+    // 只给坐标的话，重放出来的是一条"从那个点直线往前"的假路径。
+    out.av = r1(r.ackV || 0); out.alt = r2(r.ackLat || 0);
     out.q = r.queued | 0;
   }
   return out;
@@ -113,9 +141,10 @@ export function decodeRacer(wire, roster) {
     name: meta.name || `#${wire.i}`, bike: meta.bike || 0, palette: meta.palette || 0,
     x: wire.x, z: wire.z, v: wire.v / KMH, kmh: wire.v,
     state: wire.st ? "ride" : "wreck", wreck: wire.wk, wreckKind: wire.sk || "",
-    lean: wire.ln, swing: wire.sw, nitro: !!wire.nl, stamina: wire.sm,
+    lean: wire.ln, swing: wire.sw, nitro: !!wire.nl, nitroCd: wire.nc || 0, stamina: wire.sm,
     rank: wire.rk, finished: !!wire.fi, finishTime: wire.ft,
     downs: wire.d, dayuns: wire.dy, crashes: wire.cr, cash: wire.ca, wobble: wire.wb,
     ack: wire.ak | 0, ackZ: wire.az, ackX: wire.ax, queued: wire.q | 0,
+    ackV: wire.av, ackLat: wire.alt,
   };
 }

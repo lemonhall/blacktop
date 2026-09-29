@@ -15,6 +15,7 @@ import {
 import { dropPlayer, ejectFromWorld, joinLive } from "./room-match.mjs";
 import { ALARM_MS, MAX_MSGS_PER_SEC } from "./room-consts.mjs";
 import { resetQueue } from "../sim/netcode.mjs";
+import { encodeMap } from "../sim/wire.mjs";
 
 /** 连上了：入名册、回一帧 hello；如果比赛已经开着，直接把他放上路补位。 */
 export function attach(room, ws, playerId, name) {
@@ -37,7 +38,15 @@ export function attach(room, ws, playerId, name) {
   ws.send(JSON.stringify({ t: "hello", you: { id: playerId, name }, room: roomView(room.state, playerId) }));
   if (room.world && room.world.phase === "live") {
     joinLive(room.world, joined.member);
-    ws.send(JSON.stringify(room.mapMsg));
+    // 名册变了，地图就得重新发一遍——**而且不止发给新人，是发给所有人**。
+    //
+    // 快照里只有短整型的车号，名字 / 配色 / 车型一律住在 `map.roster` 里。所以
+    // 补位进来的人如果拿的还是开局那份名册，他在这条路上就**没有身份**：
+    // 客户端找不到"我"那一号车，于是本地预测不启动、油门一点反应都没有（画面
+    // 上别人还在跑，只有他自己是块石头）；而其他人看到的新人是一台没名字的灰车。
+    // 一个人进来就重编一次地图，几百字节，换的是一整条链路能对上。
+    room.mapMsg = encodeMap(room.world);
+    room.broadcast(room.mapMsg);
   }
   // 重连回来用的是**同一台车**，但输入时间线必须是新的：旧连接攒下的命令属于
   // 上一个浏览器会话，留着会让车在重连瞬间自己往前冲一段。

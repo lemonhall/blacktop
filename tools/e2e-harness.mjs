@@ -49,6 +49,9 @@ export const observe = page => page.evaluate(async () => {
   const { S } = await import("/js/state.mjs");
   const snap = S.snaps[S.snaps.length - 1] || null;
   const text = id => (document.getElementById(id) || {}).textContent || "";
+  const chips = [...document.querySelectorAll("#rosterRows .roster-chip")];
+  const picked = document.querySelector("#bikePicker [data-bike].selected");
+  const mine = S.mine;
   return {
     screen: S.screen,
     connected: S.connected,
@@ -56,27 +59,47 @@ export const observe = page => page.evaluate(async () => {
     tenant: S.tenant,
     connText: text("connText"),
     title: text("roomTitle"),
+    phase: S.room ? S.room.ph : null,
     botCount: text("botCount"),
-    roster: document.querySelectorAll("#rosterRows .roster-chip").length,
+    roster: chips.length,
+    botChips: chips.filter(c => c.classList.contains("bot")).length,
     cards: document.querySelectorAll("#roomList .room-card").length,
     mapSeed: S.map ? S.map.seed : null,
+    mapMode: S.map ? S.map.mode : null,
+    mapLanes: S.map ? S.map.lanes : null,
+    rosterSize: S.map ? S.map.roster.size : 0,
     names: S.room ? S.room.members.map(m => m.n) : [],
+    bikes: S.room ? S.room.members.map(m => m.bike) : [],
     roomId: S.room ? S.room.id : null,
     // 举手与开局闸门在界面上的投影：房主的开打按钮亮不亮、我自己的举手状态。
     allReady: S.room ? S.room.allReady : null,
     startEnabled: !document.getElementById("startButton").disabled,
     readyOn: document.getElementById("readyButton").classList.contains("on"),
-    // 选边：`myTeam` 是我自己选的那一边，`sides` 是名册上每个人的边（-1 = 自动）。
-    myTeam: S.room && S.room.you ? S.room.you.team : null,
-    sides: S.room ? S.room.members.map(m => m.tm) : [],
+    countdown: S.countdown,
+    // 选车：`myBike` 是服务端认下的车型，`pickedBike` 是界面上高亮的那张卡。
+    myBike: S.room && S.room.you ? S.room.you.bike : null,
+    pickedBike: picked ? Number(picked.dataset.bike) : null,
     roleNote: text("rosterNote"),
-    self: S.mine ? { x: S.mine.x, y: S.mine.y, tm: S.mine.tm, hp: S.mine.hp, al: S.mine.al, h: S.mine.h } : null,
-    actors: snap ? snap.a.map(a => ({ ow: a.ow, k: a.k, tm: a.tm, al: a.al })) : [],
-    bullets: snap ? snap.b.length : 0,
-    score: snap ? snap.sc : null,
+    // 权威坐标（服务端算的）与本地预测坐标分开报：这两个数字不一致才是 bug。
+    self: mine ? {
+      x: mine.x, z: mine.z, kmh: mine.kmh, rank: mine.rank,
+      stamina: mine.stamina, state: mine.state, lean: mine.lean,
+      nitro: mine.nitro, nitroCd: mine.nitroCd, downs: mine.downs, crashes: mine.crashes,
+      finished: mine.finished,
+    } : null,
+    predict: S.predictMe ? { x: S.predictMe.x, z: S.predictMe.z, kmh: S.predictMe.kmh } : null,
+    actors: snap ? snap.r.map(r => ({ i: r.i, owner: S.map ? (S.map.roster.get(r.i) || {}).ownerId : null, z: r.z })) : [],
+    traffic: snap ? (snap.tr || []).length : 0,
+    dayun: snap ? (snap.tr || []).filter(v => v[1] === "dayun").length : 0,
     ticks: snap ? snap.tk : 0,
-    feed: document.getElementById("killFeed").textContent.replace(/\s+/gu, " ").slice(0, 160),
-    healthText: text("healthText"),
+    worldTime: snap ? snap.tm : 0,
+    feed: text("feedList").replace(/\s+/gu, " ").slice(0, 200),
+    ranks: text("rankList").replace(/\s+/gu, " ").slice(0, 200),
+    hudTimer: text("hudTimer"),
+    hudGap: text("hudGap"),
+    resultRank: text("resultRank"),
+    resultTable: text("resultTable").replace(/\s+/gu, " ").slice(0, 240),
+    roomNote: text("roomsNote"),
   };
 });
 
@@ -99,8 +122,33 @@ export async function openClient(browser, nick, { seed = true } = {}) {
 }
 
 /** 真人输入走真实事件，而不是直接改 `S`——否则测的就不是"输入上行"这条链路了。 */
+export const keyDown = (page, code) =>
+  page.evaluate(c => document.dispatchEvent(new KeyboardEvent("keydown", { code: c, bubbles: true })), code);
+
+export const keyUp = (page, code) =>
+  page.evaluate(c => document.dispatchEvent(new KeyboardEvent("keyup", { code: c, bubbles: true })), code);
+
 export async function holdKey(page, code, ms) {
-  await page.evaluate(c => document.dispatchEvent(new KeyboardEvent("keydown", { code: c })), code);
+  await keyDown(page, code);
   await sleep(ms);
-  await page.evaluate(c => document.dispatchEvent(new KeyboardEvent("keyup", { code: c })), code);
+  await keyUp(page, code);
+}
+
+/** 同时按住几个键跑一段时间：油门 + 压车是赛车里最常用的组合。 */
+export async function holdKeys(page, codes, ms) {
+  for (const code of codes) await keyDown(page, code);
+  await sleep(ms);
+  for (const code of codes) await keyUp(page, code);
+}
+
+/** 起名弹窗：拿到邀请链接的人、第一次进房的人都要先过这一道。 */
+export async function answerNameGate(page, name, { timeout = 8000 } = {}) {
+  const asked = await until(async () => !(await page.locator("#nameBackdrop").isHidden()), {
+    what: "起名弹窗", timeout, every: 150,
+  }).then(() => true).catch(() => false);
+  if (asked) {
+    await page.fill("#nameInput", name);
+    await page.click("#nameConfirm");
+  }
+  return asked;
 }

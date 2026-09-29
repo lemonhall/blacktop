@@ -10,9 +10,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { build, digest, run, seconds } from "./helpers.mjs";
 import { MAX_RACERS } from "../sim/data.mjs";
-import { KMH } from "../sim/constants.mjs";
+import { DT, KMH } from "../sim/constants.mjs";
 import { specOf } from "../sim/racer.mjs";
 import { TIME_LIMIT } from "../sim/world.mjs";
+import { stepWorld } from "../sim/step.mjs";
 
 test("同一颗种子跑两遍 → 逐位一致（这是可复现性的地基）", () => {
   const a = run(build({ seed: 12345 }), seconds(30));
@@ -53,6 +54,12 @@ test("一场比赛能跑完：所有人冲线，名次按冲线时刻排", () =>
   const w = run(build({ seed: 4211, mode: "city" }), seconds(TIME_LIMIT));
   assert.ok(w.results, "这一场没有结算");
   assert.equal(w.results.reason, "all_finished");
+  // 结算必须**同时把世界停表**：房间的节拍器就是靠这个判断"该广播结算了"。
+  // 只写 `results` 不写 `phase` 的话，名次算得再对，玩家也永远看不到结算页。
+  assert.equal(w.phase, "over");
+  const frozen = w.time;
+  stepWorld(w, DT);
+  assert.equal(w.time, frozen, "结算之后世界不该再往前走");
   const times = w.results.players.map(p => p.time);
   assert.ok(times.every(t => t !== null), "应该所有人都跑完了");
   for (let i = 1; i < times.length; i++) {

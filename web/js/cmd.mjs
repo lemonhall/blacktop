@@ -1,12 +1,14 @@
 /**
- * 客户端那一半输入时间线：把"我这几帧按着哪个方向、走了几格"打成一条命令。
+ * 客户端那一半输入时间线：把"我这几帧按着哪些键、走了几格"打成一条命令。
  *
- * 一条命令里只有一个方向、只有一段时间——这是服务端能逐格重放的前提。所以方向
- * 一变就顺手把上一条收尾发走，而不等下一个 40ms 的节拍。代价是方向切换时多几条
- * 消息，换来的是"重放出来的路径和本机预测逐像素一致"。
+ * 一条命令里只有一组入力——这是服务端能逐格重放的前提。所以油门/刹车/压车
+ * 任何一项变了，就顺手把上一条收尾发走；**出拳额外强制切一条新命令**，否则
+ * "这一拳"会被挂到一条几十毫秒前就已经在走的命令头上，落在服务端就成了
+ * "我抬手之前就已经打出去"。
  *
  * 格数（`n`）是这条命令的全部意义：25Hz 上行时它通常是 2~3；浏览器卡一下会是 6~8；
- * 死了或者没在跑，它就是 0——那时这条消息只负责"让世界别停"。
+ * 发车倒数里它是 0（那时油门锁死，声明几格都是骗人，但消息本身还要发——
+ * 世界的推进是被消息驱动的，一条都不来，倒数就永远走不完）。
  */
 
 import { S } from "./state.mjs";
@@ -16,10 +18,9 @@ export const SEND_MS = 40;
 /** 待确认列表的兜底上限：服务端彻底不回 ack 时，别让内存无限涨。 */
 const MAX_PENDING = 400;
 
-/** 方向量化到 1/16：摇杆的细微抖动不该把命令切得粉碎。 */
+/** 压车量化到 1/16：键盘是 ±1 无所谓，摇杆的细微抖动不该把命令切得粉碎。 */
 const QUANT = 16;
 const quant = v => Math.round(v * QUANT) / QUANT;
-const round3 = v => Math.round(v * 1000) / 1000;
 
 let post = () => {};
 
@@ -33,20 +34,19 @@ export function resetCmds() {
   S.lastSentAt = 0;
 }
 
+const keyOf = c => `${c.th}|${c.br}|${quant(c.st)}|${c.nos ? 1 : 0}`;
+
 /**
- * 本帧要预测的方向（也就是要写进命令的方向）。返回的 `cmd` 由调用方逐格
- * `noteTick`，再定期 `flushCmd` 出去。
+ * 本帧要预测的操作（也就是要写进命令的那一组）。返回的命令对象由调用方
+ * 逐格 `noteTick`，再定期 `flushCmd` 出去。
  */
-export function frameDir(now, dirX, dirY, angle, flags) {
-  const mx = quant(dirX), my = quant(dirY);
+export function frameInput(now, controls) {
+  const key = keyOf(controls);
+  const punch = (S.actions | 0) !== 0;
   const cur = S.cmd;
-  if (cur && cur.n > 0 && (cur.mx !== mx || cur.my !== my)) {
-    flush(flags);
-    S.lastSentAt = now;
-  }
-  if (!S.cmd) S.cmd = { sq: ++S.cmdSeq, mx, my, a: angle, n: 0 };
-  else if (S.cmd.n === 0) { S.cmd.mx = mx; S.cmd.my = my; }
-  S.cmd.a = angle;
+  if (cur && cur.n > 0 && (cur.key !== key || punch)) { flush(); S.lastSentAt = now; }
+  if (!S.cmd) S.cmd = { sq: ++S.cmdSeq, ...controls, st: quant(controls.st), key, n: 0 };
+  else if (S.cmd.n === 0) Object.assign(S.cmd, controls, { st: quant(controls.st), key });
   return S.cmd;
 }
 
@@ -61,10 +61,10 @@ export function noteTick(cmd) {
 }
 
 /** 到点就把当前命令收尾发出去。返回是否真的发了。 */
-export function flushCmd(now, flags, force = false) {
+export function flushCmd(now, force = false) {
   if (!S.cmd) return false;
   if (!force && now - S.lastSentAt < SEND_MS) return false;
-  if (!flush(flags)) return false;
+  if (!flush()) return false;
   S.lastSentAt = now;
   return true;
 }
@@ -72,19 +72,17 @@ export function flushCmd(now, flags, force = false) {
 /**
  * 收尾：把命令打成一条上行报文。
  *
- * `act`（一次性动作位）在这里被消费掉——由**最先发生的那个 flush** 带走，所以
- * 一次按键永远只触发一次闪避。`k` 只是给老服务端兜底的位掩码，新协议传的是
- * 量化后的 mx/my 向量（摇杆的模拟量才不会退化成八向）。
+ * `act`（出拳那一票）在这里被消费掉——它由**最先发生的那次 flush**带走。
  */
-function flush(flags) {
+function flush() {
   const cmd = S.cmd;
   if (!cmd) return false;
   S.cmd = null;
   const act = S.actions | 0;
   S.actions = 0;
   post({
-    t: "in", sq: cmd.sq, mx: cmd.mx, my: cmd.my, n: cmd.n,
-    k: flags.k | 0, a: round3(cmd.a), f: flags.f ? 1 : 0, act, r: flags.r | 0,
+    t: "in", sq: cmd.sq, th: cmd.th, br: cmd.br, st: cmd.st,
+    nos: cmd.nos ? 1 : 0, act, n: cmd.n,
   });
   if (S.cmds.length > MAX_PENDING) S.cmds.splice(0, S.cmds.length - MAX_PENDING);
   return true;

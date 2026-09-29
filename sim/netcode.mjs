@@ -31,6 +31,10 @@ export function resetQueue(a) {
   a.ack = 0;
   a.ackZ = a.z;
   a.ackX = a.x;
+  // 速度与侧滑也要一起记：赛车的位置对账只回一个坐标是不够的——从"那个坐标"
+  // 出发重放，如果不知道当时跑多快、被离心力推了多少，重放出来的路径是一条直线。
+  a.ackV = a.v || 0;
+  a.ackLat = a.lat || 0;
   a.pendingAck = 0;
   a.lastCmdAt = 0;
 }
@@ -51,6 +55,8 @@ export function pushCmd(a, cmd, now) {
     a.ack = dropped.sq;
     a.ackZ = a.z;
     a.ackX = a.x;
+    a.ackV = a.v;
+    a.ackLat = a.lat;
   }
 }
 
@@ -79,6 +85,8 @@ export function settleAck(a) {
   a.ack = a.pendingAck;
   a.ackZ = a.z;
   a.ackX = a.x;
+  a.ackV = a.v;
+  a.ackLat = a.lat;
   a.pendingAck = 0;
 }
 

@@ -12,10 +12,10 @@ const params = new URLSearchParams(location.search);
 const pick = (key, fallback) => {
   const fromQuery = params.get(key);
   if (fromQuery !== null) {
-    try { localStorage.setItem(`fray.${key}`, fromQuery); } catch { /* 隐私模式 */ }
+    try { localStorage.setItem(`blacktop.${key}`, fromQuery); } catch { /* 隐私模式 */ }
     return fromQuery;
   }
-  try { return localStorage.getItem(`fray.${key}`) || fallback; } catch { return fallback; }
+  try { return localStorage.getItem(`blacktop.${key}`) || fallback; } catch { return fallback; }
 };
 
 /** 优先级：`?api=` > localStorage > 构建期注入 > 同源。 */

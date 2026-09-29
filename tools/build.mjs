@@ -18,7 +18,7 @@ const WEB = path.join(ROOT, "web");
 const WEB_SIM = path.join(WEB, "sim");
 const JS = path.join(WEB, "js");
 
-const api = (process.env.FRAY_API || "").replace(/\/+$/u, "");
+const api = (process.env.BLACKTOP_API || "").replace(/\/+$/u, "");
 
 /** 1. 共享内核：服务端 import `../sim/x.mjs`，浏览器 import `/sim/x.mjs`，同一份文件。 */
 rmSync(WEB_SIM, { recursive: true, force: true });
@@ -34,7 +34,7 @@ for (const name of readdirSync(SIM)) {
 const banner = [
   "/**",
   " * 构建期常量，由 `tools/build.mjs` 生成——**不要手工改这个文件**。",
-  " * 改 `FRAY_API` 环境变量再跑一次构建即可。",
+  " * 改 `BLACKTOP_API` 环境变量再跑一次构建即可。",
   " */",
   "",
 ].join("\n");

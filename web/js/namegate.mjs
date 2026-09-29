@@ -10,7 +10,7 @@
  */
 
 const $ = id => document.getElementById(id);
-const NAME_KEY = "fray.name";
+const NAME_KEY = "blacktop.name";
 
 export function readName() {
   try { return (localStorage.getItem(NAME_KEY) || "").trim().slice(0, 16); } catch { return ""; }
