@@ -163,6 +163,15 @@ export function drawRoad(ctx, cam, tbl, S) {
     if (yF > cam.H + 2) break;
     const z = (tbl.zs[i] + tbl.zs[i + 1]) / 2;
     const geom = { far, near, yF, yN, z };
+    /*
+     * **这一片到底有多高**——低于两个像素的那几片，路肩上的砂砾、轮胎压出来的沟、
+     * 水滴的倒影全都画不出一个像素来，却要照样发几十次画布调用。八条路的痕迹是
+     * 这条路上最贵的一笔（每条车道两条沟，四条车道就是八条），所以这里按"看得见
+     * 看不见"来分级：近处画全套，远处只留路、路缘石和车道线。
+     *
+     * 2.2 是试出来的：再低一点，中景的路面上会看见轮胎痕"断"了一截。
+     */
+    const tall = yN - yF > 2.2;
     // 每一格的路面亮度抖一点点（按**世界坐标**抖，所以车往前开时纹路是静止的）。
     // 一整条纯色的路是这一版之前最"塑料"的地方。
     const wear = hash2(Math.floor(z / 3), 11) * 0.09 - 0.045;
@@ -175,16 +184,28 @@ export function drawRoad(ctx, cam, tbl, S) {
     const band = band2(z, 12);
     ctx.fillStyle = shade(tone.road[band], wear);
     trapezoid(ctx, far.x, far.hw, yF, near.x, near.hw, yN);
-    // 车轮压出来的沟：两条一起，一左一右
-    tyreTracks(ctx, laneXs, geom, tone.rut);
-    // 路肩上的痕迹**在路面之后画**：沙漠的沙是从路肩往路面上爬的，先画就被路面盖掉了
-    shoulderDetail(ctx, track.ground, geom);
+    if (tall) {
+      // 车轮压出来的沟：两条一起，一左一右
+      tyreTracks(ctx, laneXs, geom, tone.rut);
+      // 路肩上的痕迹**在路面之后画**：沙漠的沙是从路肩往路面上爬的，先画就被路面盖掉了
+      shoulderDetail(ctx, track.ground, geom);
+    }
     // 路缘石
     ctx.fillStyle = tone.rumble[band];
-    trapezoid(ctx, far.x - far.hw - far.rumble * 0.5, far.rumble * 0.5, yF,
-      near.x - near.hw - near.rumble * 0.5, near.rumble * 0.5, yN);
-    trapezoid(ctx, far.x + far.hw + far.rumble * 0.5, far.rumble * 0.5, yF,
-      near.x + near.hw + near.rumble * 0.5, near.rumble * 0.5, yN);
+    // 左右两条路缘石**合成一个路径**再填一次：同色、同片，分开画等于白多两次
+    // beginPath/fill。远看是两条，近看还是两条，中间那段空白由路面自己盖住。
+    ctx.beginPath();
+    ctx.moveTo(far.x - far.hw - far.rumble, yF);
+    ctx.lineTo(far.x - far.hw, yF);
+    ctx.lineTo(near.x - near.hw, yN);
+    ctx.lineTo(near.x - near.hw - near.rumble, yN);
+    ctx.closePath();
+    ctx.moveTo(far.x + far.hw, yF);
+    ctx.lineTo(far.x + far.hw + far.rumble, yF);
+    ctx.lineTo(near.x + near.hw + near.rumble, yN);
+    ctx.lineTo(near.x + near.hw, yN);
+    ctx.closePath();
+    ctx.fill();
     // 车道线：虚线用"隔一段画一段"实现，掠过的节奏就是速度感
     const dash = Math.floor(z / 9) % 2 === 0;
     for (const b of boundaries) {

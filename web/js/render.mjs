@@ -10,6 +10,7 @@ import { FX, S } from "./state.mjs";
 import { backdrop } from "./sky.mjs";
 import { buildSlices, createCamera, drawRoad, occluded, project, tonesOf } from "./road.mjs";
 import { drawCritter } from "./critters.mjs";
+import { label } from "./labels.mjs";
 import { drawRider } from "./sprites.mjs";
 import { drawVehicle } from "./vehicles.mjs";
 import { CAR_NAME } from "./fx.mjs";
@@ -60,9 +61,13 @@ function drawSkid(ctx, cam, tbl) {
 
 /** 粒子与跳字：在"世界的空气里"，所以画在所有立体物之后。 */
 function drawFx(ctx, cam, tbl) {
+  const W = cam.W, H = cam.H;
   for (const p of FX.smoke) {
     const q = project(cam, tbl, p.x, p.y, p.z);
-    if (!q || q.ppm < 0.25) continue;
+    // 屏幕外的不画：撞车那一瞬间，烟和火星子会往两侧甩出去几十团，其中一大半
+    // 落在画面左右之外。以前它们照样要各画一笔——`project` 算了、`arc` 也发了，
+    // 只是最后没落在屏幕上。
+    if (!q || q.ppm < 0.25 || q.sx < -30 || q.sx > W + 30 || q.sy < -30 || q.sy > H + 30) continue;
     ctx.globalAlpha = Math.max(0, p.life / p.max) * 0.75;
     ctx.fillStyle = p.color;
     ctx.beginPath();
@@ -71,7 +76,7 @@ function drawFx(ctx, cam, tbl) {
   }
   for (const p of FX.sparks) {
     const q = project(cam, tbl, p.x, p.y, p.z);
-    if (!q || q.ppm < 0.25) continue;
+    if (!q || q.ppm < 0.25 || q.sx < -30 || q.sx > W + 30 || q.sy < -30 || q.sy > H + 30) continue;
     ctx.globalAlpha = Math.max(0, p.life / p.max);
     ctx.fillStyle = p.color;
     ctx.fillRect(q.sx - p.size * q.ppm, q.sy - p.size * q.ppm, p.size * q.ppm * 2, p.size * q.ppm * 2);
@@ -211,18 +216,6 @@ function drawRacerSprite(ctx, cam, tbl, r, view) {
     label(ctx, p.sx, p.sy - 2.9 * p.ppm, r.name, me ? "#ffd88a" : "#dfe8ff",
       Math.min(15, 0.55 * p.ppm + 8));
   }
-}
-
-function label(ctx, x, y, text, color, size) {
-  ctx.save();
-  ctx.font = `700 ${Math.max(9, size).toFixed(1)}px system-ui, "Microsoft YaHei", sans-serif`;
-  ctx.textAlign = "center";
-  ctx.lineWidth = Math.max(2, size * 0.28);
-  ctx.strokeStyle = "rgba(4,7,14,.85)";
-  ctx.strokeText(text, x, y);
-  ctx.fillStyle = color;
-  ctx.fillText(text, x, y);
-  ctx.restore();
 }
 
 /** 前景：倒数、播报、速度线、暗角。全部是"屏幕上"的东西，不参与世界坐标。 */

@@ -19,6 +19,7 @@
  */
 
 import { clamp01 } from "./art.mjs";
+import { bakePixels } from "./spritecache.mjs";
 
 const TAU = Math.PI * 2;
 /** 刻度弧：从**左下**（140°）顺时针绕过正上方，收在**右下**（400°）。和真车的排布一致。 */
@@ -41,35 +42,16 @@ const rg = (ctx, x, y, r0, r1, stops) => {
 };
 
 /**
- * 画一只表。
+ * **盘面**：从舱壳到刻度数字的那一层，一帧一帧长一个样。
  *
- * `opts.readout` 是表壳外面那块液晶的 DOM id（表盘上已经有里程窗了，外面那块负责
- * 在窄屏上把读数留大），`opts.unit` 印在盘面下沿，`opts.color` 只用来点一圈极细的
- * 识别环——左表右表全靠它区分，但它是"表圈上的一道色",不是"一个彩色圆盘"。
+ * 它是这只表上最贵的部分（两圈弧、镀铬渐变、玻璃反光、十几个刻度数字，其中数字
+ * 还要描边），而它**只跟"这只表怎么刻度"有关**，跟读数一点关系都没有。所以它
+ * 整块烘成一张贴图，每帧只贴一次，剩下的针、中心盖、里程窗才现画。
+ *
+ * 拿真实 Chrome 量过：这一笔省掉的是 HUD 里最大的一块 `strokeText`。
  */
-export function drawGauge(canvas, value, max, color, opts = {}) {
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  const size = canvas.width;
-  const c = size / 2;
-  const R = c - 1;
-  const faceR = R * 0.855;
-  const shown = Math.max(0, Math.round(value));
-  const ratio = clamp01(max > 0 ? shown / max : 0);
-  const I = size / 124; // 所有尺寸按 124 的底稿写，换画布大小也不走样
-  // 刻度规格：`major` 是"隔多少画一个数字"，`minor` 是最小一格，`redline` 是红区起点。
-  // 速度表 260/40/20，转速表 9/1/0.5 —— 两种表的刻度逻辑是同一套，只是参数不同。
-  const major = opts.major || max / 6.5;
-  const minor = opts.minor || major / 2;
+function paintFace(ctx, { size, c, R, faceR, I, max, major, minor, redRatio, color, labelPx }) {
   const N = Math.max(1, Math.round(max / minor));
-  const redRatio = opts.redline != null ? clamp01(opts.redline / max) : 0.84;
-  const decimals = opts.decimals | 0;
-  const fmt = v => (decimals ? v.toFixed(decimals) : String(Math.round(v)));
-  /** 盘面上的数字永远是整数：真表的刻度不会写成 "8.0"。小数位只给中间那块里程窗。 */
-  const fmtLabel = v => String(Math.round(v));
-
-  ctx.clearRect(0, 0, size, size);
-
   // 1) 舱壳：壳子比表大一圈，上沿受光、下沿沉进黑里，表就有了"嵌在仪表舱里"的感觉。
   ctx.beginPath(); ctx.arc(c, c, R, 0, TAU);
   ctx.fillStyle = lg(ctx, 0, c - R, 0, c + R,
@@ -104,7 +86,7 @@ export function drawGauge(canvas, value, max, color, opts = {}) {
   ctx.fill();
 
   ctx.save();
-  ctx.clip(); // 之后的所有刻度、数字、指针都裁在盘面里
+  ctx.clip(); // 之后的所有刻度、数字都裁在盘面里
 
   // 6) 玻璃反光：左上那一片。真表上它永远在，而且正好压在刻度上——盘子立刻"有玻璃"。
   ctx.beginPath();
@@ -136,10 +118,47 @@ export function drawGauge(canvas, value, max, color, opts = {}) {
     ctx.strokeStyle = "#1b1f26";
     ctx.stroke();
     if (!big) continue;
-    ctx.font = `700 ${Math.round((opts.labelPx || 9) * I)}px ${FONT}`;
+    ctx.font = `700 ${Math.round((labelPx || 9) * I)}px ${FONT}`;
     ctx.fillStyle = k >= redRatio - 1e-6 ? "#bd2f26" : "#171a20";
-    ctx.fillText(fmtLabel(v), c + cos * faceR * 0.805, c + sin * faceR * 0.805);
+    ctx.fillText(String(Math.round(v)), c + cos * faceR * 0.805, c + sin * faceR * 0.805);
   }
+  ctx.restore();
+}
+
+/**
+ * 画一只表。
+ *
+ * `opts.readout` 是表壳外面那块液晶的 DOM id（表盘上已经有里程窗了，外面那块负责
+ * 在窄屏上把读数留大），`opts.unit` 印在盘面下沿，`opts.color` 只用来点一圈极细的
+ * 识别环——左表右表全靠它区分，但它是"表圈上的一道色",不是"一个彩色圆盘"。
+ */
+export function drawGauge(canvas, value, max, color, opts = {}) {
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const size = canvas.width;
+  const c = size / 2;
+  const R = c - 1;
+  const faceR = R * 0.855;
+  const shown = Math.max(0, Math.round(value));
+  const ratio = clamp01(max > 0 ? shown / max : 0);
+  const I = size / 124; // 所有尺寸按 124 的底稿写，换画布大小也不走样
+  // 刻度规格：`major` 是"隔多少画一个数字"，`minor` 是最小一格，`redline` 是红区起点。
+  // 速度表 260/40/20，转速表 9/1/0.5 —— 两种表的刻度逻辑是同一套，只是参数不同。
+  const major = opts.major || max / 6.5;
+  const minor = opts.minor || major / 2;
+  const redRatio = opts.redline != null ? clamp01(opts.redline / max) : 0.84;
+  const decimals = opts.decimals | 0;
+  const fmt = v => (decimals ? v.toFixed(decimals) : String(Math.round(v)));
+
+  const face = {
+    size, c, R, faceR, I, max, major, minor, redRatio, color,
+    labelPx: opts.labelPx || 9,
+  };
+  const key = `gauge|${size}|${opts.labelPx || 9}|${max}|${major}|${minor}|${redRatio}|${color}`;
+  const baked = bakePixels(key, size, size, c2 => paintFace(c2, face));
+  ctx.clearRect(0, 0, size, size);
+  if (baked) ctx.drawImage(baked.canvas, 0, 0);
+  else paintFace(ctx, face);
 
   // 9) 红针：从中心盖里长出来的细楔子。尾端有一小截配重，不然它像一根悬空的棍。
   //    局部坐标里针尖朝 **-y**（正上），所以旋转 `角度 + π/2` 之后针尖正好指到读数。
@@ -202,8 +221,6 @@ export function drawGauge(canvas, value, max, color, opts = {}) {
   ctx.font = `700 ${Math.round(9 * I)}px ${FONT}`;
   ctx.fillStyle = "#22262e";
   ctx.fillText(opts.unit || "km/h", c, wy + wh + 9 * I);
-
-  ctx.restore();
 
   const node = opts.readout && typeof document !== "undefined"
     && document.getElementById(opts.readout);

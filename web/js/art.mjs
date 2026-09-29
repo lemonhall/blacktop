@@ -30,8 +30,40 @@ const hex2rgb = hex => {
 const rgb2hex = (r, g, b) =>
   `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
 
+/**
+ * 调色函数的**记忆化**。
+ *
+ * 为什么要加：`shade` / `mix` / `haze` 都是"字符串进、字符串出"的纯函数，一次调用
+ * 要 `parseInt` 一次、再拼一次十六进制。画一栋楼要调它几十次，一帧几百次，而它
+ * 输入的颜色**就那么几十种**——同一栋楼的墙面颜色每一帧都一模一样，却每一帧都从
+ * 字符串重新算一遍。
+ *
+ * 拿真实 Chrome 量过：十三台车 + 十五个车手 + 一条路的那一帧里，主线程有一大半
+ * 花在这些零碎上。缓存之后 `shade` 的重复调用几乎为零成本。
+ *
+ * 表有上限：`haze` 的 `k` 是连续的（雾量按距离插值），键会无限多，所以放不下就
+ * 整表丢掉重来。丢一次只损失一次缓存命中，不会泄漏。
+ */
+const MEMO_LIMIT = 4096;
+const memo = (fn, key) => {
+  const table = fn.__memo || (fn.__memo = new Map());
+  const hit = table.get(key);
+  if (hit !== undefined) return hit;
+  const out = fn(key);
+  if (table.size >= MEMO_LIMIT) table.clear();
+  table.set(key, out);
+  return out;
+};
+
 /** 往亮里推（`amount > 0`）或往暗里推（`amount < 0`）。所有体积感都是它造的。 */
 export function shade(hex, amount) {
+  return memo(shadeOnce, `${amount}|${hex}`);
+}
+
+function shadeOnce(key) {
+  const bar = key.indexOf("|");
+  const amount = Number(key.slice(0, bar));
+  const hex = key.slice(bar + 1);
   const [r, g, b] = hex2rgb(hex);
   const mix = c => Math.max(0, Math.min(255, Math.round(c + (amount > 0 ? (255 - c) : c) * amount)));
   return rgb2hex(mix(r), mix(g), mix(b));
@@ -39,7 +71,13 @@ export function shade(hex, amount) {
 
 /** 两种颜色之间插值：`t = 0` 取 a，`t = 1` 取 b。 */
 export function mix(a, b, t) {
-  const k = clamp01(t);
+  return memo(mixOnce, `${t}|${a}|${b}`);
+}
+
+function mixOnce(key) {
+  const parts = key.split("|");
+  const k = clamp01(Number(parts[0]));
+  const a = parts[1], b = parts[2];
   const [r1, g1, b1] = hex2rgb(a), [r2, g2, b2] = hex2rgb(b);
   return rgb2hex(
     Math.round(r1 + (r2 - r1) * k),
@@ -50,7 +88,16 @@ export function mix(a, b, t) {
 
 /** 大气透视：把颜色往远处的雾色上拉。`k` 是"有多远"，0 近 1 贴到地平线。 */
 export const FOG = { city: "#3a2b46", wild: "#c3d3e2" };
-export const haze = (hex, k, mode = "city") => mix(hex, FOG[mode] || FOG.city, clamp01(k));
+/**
+ * 雾量按 1/64 取整再插值。
+ *
+ * `k` 是**连续**的（按距离算出来，每帧都在动），直接丢给 `mix` 会让记忆化表
+ * 每一帧都换一批键——楼一多，缓存等于没做，还白搭一次 Map 查找。取整到 1/64
+ * 之后，同一栋楼在几十帧里用的是同一个键；颜色差最多 4/255，比雾本身的变化
+ * 小一个数量级，眼睛看不出来。
+ */
+export const haze = (hex, k, mode = "city") =>
+  mix(hex, FOG[mode] || FOG.city, Math.round(clamp01(k) * 64) / 64);
 
 /**
  * 一个**上窄下宽的梯形**：伪 3D 里所有"贴着路面的一横条"都用它。
