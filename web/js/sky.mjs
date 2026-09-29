@@ -149,26 +149,28 @@ const PAINT = {
     for (let x = 0; x < w; x += 9) ctx.fillRect(x, y + 1, 3.5, 1);
   },
   shafts: (p, ctx, w, h) => {
-    // 林间光柱：几条斜着的半透明梯形，光从右上下来。**每一条自己就是一层渐变**，
-    // 柱脚亮、柱头淡——上一版是纯色梯形，画出来像贴在林子上的一张纸。
+    // 林间光柱：光从树冠的缝里漏下来，落在地上最亮。
+    //
+    // 三条硬规矩，都是上一版踩出来的：**每一条自己带一层竖直渐变**（两头淡、脚下
+    // 亮），**窄**（宽的就不是光柱，是纸），**少**（十一条粗的叠在一起，整个林子
+    // 就蒙上了一层米黄色的塑料布——试过，很难看）。
     for (let i = 0; i < p.shafts.count; i++) {
       const x = hash2(53, i) * w;
-      const a = p.shafts.alpha + hash2(59, i) * 0.12;
-      ctx.fillStyle = `${p.shafts.color}${(a * 0.35).toFixed(2)})`;
+      const a = p.shafts.alpha + hash2(59, i) * 0.1;
+      const topW = w * 0.016, botW = w * 0.05;
+      const g = ctx.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, `${p.shafts.color}0)`);
+      g.addColorStop(0.3, `${p.shafts.color}${(a * 0.4).toFixed(2)})`);
+      g.addColorStop(0.82, `${p.shafts.color}${a.toFixed(2)})`);
+      g.addColorStop(1, `${p.shafts.color}${(a * 0.5).toFixed(2)})`);
+      ctx.fillStyle = g;
       ctx.beginPath();
       ctx.moveTo(x, 0);
-      ctx.lineTo(x + w * 0.05, 0);
-      ctx.lineTo(x + w * 0.14, h);
-      ctx.lineTo(x + w * 0.06, h);
-      ctx.closePath(); ctx.fill();
-      // 柱脚那一截更亮：光柱是"打到地上"才看得见的
-      ctx.fillStyle = `${p.shafts.color}${a.toFixed(2)})`;
-      ctx.beginPath();
-      ctx.moveTo(x + w * 0.075, h * 0.35);
-      ctx.lineTo(x + w * 0.108, h * 0.35);
-      ctx.lineTo(x + w * 0.14, h);
-      ctx.lineTo(x + w * 0.06, h);
-      ctx.closePath(); ctx.fill();
+      ctx.lineTo(x + topW, 0);
+      ctx.lineTo(x + botW, h);
+      ctx.lineTo(x + botW - topW, h);
+      ctx.closePath();
+      ctx.fill();
     }
   },
   standing: (p, ctx, w, h) => {

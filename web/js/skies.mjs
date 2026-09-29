@@ -60,7 +60,7 @@ export const PALETTES = {
     layers: ["glow", "mist", "standing", "standing", "canopy", "shafts"],
     // 路尽头的亮：一条林道如果尽头也是黑的，看着就像撞墙
     glow: { x: 0.5, y: 0.96, r: 0.34, color: "rgba(226,238,166,.42)" },
-    shafts: { count: 11, color: "rgba(255,246,190,", alpha: 0.3 },
+    shafts: { count: 6, color: "rgba(255,246,190,", alpha: 0.3 },
     standing: [
       { color: "#0e1c0b", count: 20, seed: 61, w: 0.045, branch: false },
       { color: "#1d2f14", count: 26, seed: 67, w: 0.032, branch: true, shade: "rgba(10,20,8,.42)" },
