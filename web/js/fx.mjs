@@ -87,6 +87,18 @@ export function skid(x, z) {
   if (FX.skid.length > 160) FX.skid.shift();
 }
 
+/**
+ * 地面上的**冲击环**：一圈从落点往外推的椭圆，越推越大、越推越淡。
+ *
+ * 火花和烟解决的是"亮不亮"，这一圈解决的是"这一下有多重"。放在地面平面上
+ * （`y` 是离地高度），所以它会被投影压扁成椭圆——俯视游戏里画不出这种透视。
+ * `k` 是份量：打中人 0.5、踹飞车 1.2、大运落地 2.0。
+ */
+export function ring(x, z, y = 0.08, k = 1, color = "rgba(255,236,190,") {
+  FX.rings.push({ x, z, y, k, color, t: 0, max: 0.42 + k * 0.14 });
+  if (FX.rings.length > 24) FX.rings.shift();
+}
+
 export function feed(text, color = "#dfe8ff") {
   FX.feed.unshift({ text, color, at: performance.now() });
   FX.feed = FX.feed.slice(0, 5);
@@ -114,6 +126,7 @@ export function consumeEvents(events, view) {
       case "hit":
         burst(ev.x, ev.z, 1.1, "#ffd23f", 12, 16, 0.16);
         burst(ev.x, ev.z, 1.1, "#ff6a5a", 6, 10, 0.12);
+        ring(ev.x, ev.z, 1.2, 0.55, "rgba(255,226,170,");
         floater(ev.x, ev.z, 2.3, `-${ev.d}`, "#ffd7a8", true);
         if (ev.a === mine) { play("punch"); S.hitUntil = performance.now() + 140; }
         else if (ev.b === mine) { play("hurt"); S.shake = Math.min(14, S.shake + 7); }
@@ -145,6 +158,7 @@ export function consumeEvents(events, view) {
       case "wreck": {
         burst(ev.x, ev.z, 0.9, "#ff8f5f", 18, 20, 0.2);
         smoke(ev.x, ev.z, 0.5, "rgba(210,205,200,.45)", 8, 0.8);
+        ring(ev.x, ev.z, 0.06, 1.4, "rgba(255,196,150,");
         const heavy = ev.s === "headon" || ev.s === "rear";
         feed(`${nameOf(view, ev.a)} 摔车${heavy ? " · 撞得太狠" : ""}`, "#ffb08a");
         if (ev.a === mine) {
@@ -161,6 +175,7 @@ export function consumeEvents(events, view) {
         const car = CAR_NAME[ev.kind] || "车";
         burst(ev.x, ev.z, 1.5, "#ffd23f", 26, 26, 0.24);
         burst(ev.x, ev.z, 0.9, "#ff9f5a", 12, 18, 0.18);
+        ring(ev.x, ev.z, 0.06, ev.kind === "dayun" ? 2.1 : 1.25);
         feed(`${nameOf(view, ev.a)} 一脚踹飞了一台${car}`, "#ffd23f");
         floater(ev.x, ev.z, 2.7, `+${ev.pay || 0}`, "#ffd23f", ev.kind === "dayun");
         if (ev.kind === "dayun") announce("大运起飞!", `这一脚值 ${ev.pay || 0}`, "#ffd23f");
@@ -198,6 +213,7 @@ export function consumeEvents(events, view) {
         const b = ev.b || 1;
         burst(ev.x, ev.z, 1.0, "#ffb24a", Math.round(18 + b * 14), 22 + b * 8, 0.26);
         burst(ev.x, ev.z, 0.6, "#ff6a4a", Math.round(10 + b * 8), 16, 0.2);
+        ring(ev.x, ev.z, 0.05, 1.4 + b * 0.5);
         // 落地这一下要**两段烟**：贴着地的一团亮灰（扬起来的土），
         // 和往上翻的一柱黑（烧起来的那台车）。只有一柱黑，看着像车消失了。
         smoke(ev.x, ev.z, 1.1, "rgba(48,44,42,.55)", Math.round(8 + b * 7), 0.9 + b * 0.4);
@@ -248,6 +264,8 @@ export function stepFx(dt, view) {
     if (Math.abs(me.lean) > 0.75 && me.v > 22 && rnd() < 0.3) skid(me.x - Math.sign(me.lean) * 0.3, me.z - 1.4);
   }
   burnWrecks(view, me);
+  for (const r of FX.rings) r.t += dt;
+  FX.rings = FX.rings.filter(r => r.t < r.max);
   integrate(FX.sparks, dt, 26);
   integrate(FX.smoke, dt, 2.2);
   FX.sparks = FX.sparks.filter(p => p.life > 0);

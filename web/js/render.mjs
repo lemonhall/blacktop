@@ -62,6 +62,19 @@ function drawSkid(ctx, cam, tbl) {
 /** 粒子与跳字：在"世界的空气里"，所以画在所有立体物之后。 */
 function drawFx(ctx, cam, tbl) {
   const W = cam.W, H = cam.H;
+  // 冲击环画在粒子**之前**：它在空气里是最大的一圈，压在它后面的火花才看得见。
+  for (const r of FX.rings) {
+    const q = project(cam, tbl, r.x, r.y, r.z);
+    if (!q || q.ppm < 0.2) continue;
+    const p = r.t / r.max;
+    const rad = (0.7 + p * 7.5) * r.k * q.ppm * 0.5;
+    if (rad < 1) continue;
+    ctx.strokeStyle = `${r.color}${((1 - p) * 0.75).toFixed(3)})`;
+    ctx.lineWidth = Math.max(1, (1 - p) * 1.8 * r.k * Math.min(1, q.ppm / 60));
+    ctx.beginPath();
+    ctx.ellipse(q.sx, q.sy, rad, rad * 0.3, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
   for (const p of FX.smoke) {
     const q = project(cam, tbl, p.x, p.y, p.z);
     // 屏幕外的不画：撞车那一瞬间，烟和火星子会往两侧甩出去几十团，其中一大半

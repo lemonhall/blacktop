@@ -60,6 +60,8 @@ export const S = {
 
 /** 纯表现层状态：火花、跳字、烟尘、播报、胎痕。 */
 export const FX = {
-  sparks: [], floaters: [], smoke: [], skid: [],
+  // `rings` 是**地面上的冲击环**：一团火给你的是"亮"，一圈环给你的是"这一下有多重"。
+  // 踹飞、落地、摔车、打中人都推一圈，半径和颜色由事件的份量决定。
+  sparks: [], floaters: [], smoke: [], skid: [], rings: [],
   feed: [], announce: null, banner: null,
 };

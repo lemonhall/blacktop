@@ -44,12 +44,23 @@ export { tonesOf };
 /** 相机：横向**严格跟着我**（不跟就是"车自己在飘"），纵向贴着路面起伏。 */
 export function createCamera(S) {
   const me = S.me;
-  const camZ = (me ? me.z : 0) - CAM_BACK;
+  /*
+   * 速度感的一半在**镜头**上，不在路上。
+   *
+   * 静止时镜头贴得近、视野窄，一切四平八稳；上了两百公里，镜头往后拉一截半、
+   * 视野往外张十分之一，路面两边的东西以更陡的角度往画面外划——人不会说
+   * "视野变宽了"，只会说"快了"。上一版这两样全是常数，所以快慢只体现在
+   * 车道线跑得多快上。
+   *
+   * 幅度刻意做得**小**：这是油门踩到底才该有的东西，不是全程都在的鱼眼。
+   */
+  const fast = me ? clamp((me.v || 0) / 52, 0, 1) : 0;
+  const camZ = (me ? me.z : 0) - (CAM_BACK + fast * 1.5);
   return {
-    W: S.view.w, H: S.view.h, F: S.view.h * PROJ,
+    W: S.view.w, H: S.view.h, F: S.view.h * (PROJ - fast * 0.1),
     horizon: S.view.h * HORIZON,
     camX: me ? me.x : 0, camZ,
-    camY: S.track.hillAt(camZ) + CAM_Y,
+    camY: S.track.hillAt(camZ) + CAM_Y + fast * 0.1,
   };
 }
 
