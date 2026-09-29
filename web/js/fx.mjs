@@ -63,6 +63,25 @@ export function dust(x, z, color = "rgba(198,178,138,.34)") {
   });
 }
 
+/**
+ * 一台**烧着的车**：一小簇火 + 一缕黑烟。
+ *
+ * 踹飞一台大运只有一秒半是在天上的，而"它真的完了"要靠**落地之后那一柱黑烟**。
+ * 上一版只有落地那一下爆一次粒子，然后一台瘪掉的车干干净静地滑走——爽感全丢在
+ * 那半秒之后。现在只要它还在烧（`state === "flung"`），每帧就补一把火和一把烟，
+ * 于是天上是一条火尾、地上是一柱黑烟。
+ */
+function burnAt(x, y, z, k, ash) {
+  FX.sparks.push({
+    x: x + between(-0.2, 0.2), z: z + between(-0.3, 0.3), y: y + between(0, 0.35),
+    vx: between(-2.2, 2.2), vz: between(-2.2, 2.2), vy: between(0.5, 2.8),
+    life: between(0.2, 0.5), max: 0.5, size: between(0.05, 0.13) * k,
+    color: rnd() < 0.55 ? "#ffd24a" : "#ff6a2a",
+  });
+  smoke(x, z, y + 0.35,
+    ash ? "rgba(46,42,40,.5)" : "rgba(70,62,58,.44)", 1, (ash ? 0.7 : 0.45) * k);
+}
+
 export function skid(x, z) {
   FX.skid.push({ x, z, life: 7, max: 7 });
   if (FX.skid.length > 160) FX.skid.shift();
@@ -179,9 +198,12 @@ export function consumeEvents(events, view) {
         const b = ev.b || 1;
         burst(ev.x, ev.z, 1.0, "#ffb24a", Math.round(18 + b * 14), 22 + b * 8, 0.26);
         burst(ev.x, ev.z, 0.6, "#ff6a4a", Math.round(10 + b * 8), 16, 0.2);
-        smoke(ev.x, ev.z, 0.5, "rgba(48,44,42,.55)", Math.round(6 + b * 6), 0.9 + b * 0.4);
+        // 落地这一下要**两段烟**：贴着地的一团亮灰（扬起来的土），
+        // 和往上翻的一柱黑（烧起来的那台车）。只有一柱黑，看着像车消失了。
+        smoke(ev.x, ev.z, 1.1, "rgba(48,44,42,.55)", Math.round(8 + b * 7), 0.9 + b * 0.4);
+        smoke(ev.x, ev.z, 0.2, "rgba(196,186,172,.4)", Math.round(5 + b * 4), 0.7 + b * 0.3);
         if (view && view.mine && Math.abs(ev.z - view.mine.z) < 120) {
-          play("boom"); S.shake = Math.min(28, S.shake + 8 + b * 5);
+          play("boom"); S.shake = Math.min(34, S.shake + 10 + b * 7);
         }
         break;
       }
@@ -225,17 +247,39 @@ export function stepFx(dt, view) {
     if (off && me.v > 6 && rnd() < 0.8) dust(me.x - me.lean * 0.25, me.z - 1.5);
     if (Math.abs(me.lean) > 0.75 && me.v > 22 && rnd() < 0.3) skid(me.x - Math.sign(me.lean) * 0.3, me.z - 1.4);
   }
+  burnWrecks(view, me);
   integrate(FX.sparks, dt, 26);
-  integrate(FX.smoke, dt, 3);
+  integrate(FX.smoke, dt, 2.2);
   FX.sparks = FX.sparks.filter(p => p.life > 0);
   FX.smoke = FX.smoke.filter(p => p.life > 0);
   if (FX.sparks.length > 420) FX.sparks.splice(0, FX.sparks.length - 420);
-  if (FX.smoke.length > 220) FX.smoke.splice(0, FX.smoke.length - 220);
+  if (FX.smoke.length > 300) FX.smoke.splice(0, FX.smoke.length - 300);
   for (const f of FX.floaters) { f.life -= dt; f.y += dt * 1.6; }
   FX.floaters = FX.floaters.filter(f => f.life > 0);
   for (const k of FX.skid) k.life -= dt;
   FX.skid = FX.skid.filter(k => k.life > 0);
   S.shake = Math.max(0, S.shake - dt * 30);
+}
+
+/**
+ * 还在烧的车：被踹飞之后**一路冒火**，落地之后**原地冒烟**。
+ *
+ * 只处理看得见的那些（自己和它差 240 米以上就别撒粒子了）：被踹出两百米的车
+ * 一粒火星都落不到屏幕上，白白占着粒子上限。
+ */
+function burnWrecks(view, me) {
+  if (!view || !view.traffic) return;
+  const near = me ? me.z : 0;
+  for (const v of view.traffic) {
+    if (v.state !== "flung") continue;
+    if (me && Math.abs(v.z - near) > 240) continue;
+    const air = v.y || 0;
+    const k = v.kind === "dayun" ? 1.9 : v.kind === "trike" ? 0.7 : 1.15;
+    // 天上：一条火尾；地上：一柱黑烟。落地那一刻两样都拉满，因为"它真的完了"
+    // 就是这一下。
+    if (air > 0.05) burnAt(v.x, air, v.z, k, false);
+    else if ((v.dmg || 0) > 0.85) burnAt(v.x, 0.1, v.z, k * 0.8, true);
+  }
 }
 
 function integrate(list, dt, gravity) {
