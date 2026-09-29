@@ -1,271 +1,151 @@
-# FRAY · 霓虹前线
+# BLACKTOP
 
-**服务器权威的在线多人竞技射击，跑在 Cloudflare Workers + Durable Objects 上。**
+**十五台车挤在同一条路上的在线摩托暴走竞速。** 人机混战、同向车流、迎面大运、
+一拳把对手撂倒、一脚把大运踢飞。跑在 Cloudflare Workers + Durable Objects 上，
+前端是一组静态文件，两端共用同一个确定性内核。
 
-打开一个网址，看到一屋子房间；开一桌、或者加入别人的桌子；房主往场里投放机器人；
-开打之后，真人和机器人在同一张地图上互相淘汰。
+[![对局](docs/shots/04-race.png)](docs/shots/)
 
-### 线上就绪（已部署，可直接点开玩）
+> 致敬九十年代那批"一边赛车一边打人"的摩托竞速游戏。名字与素材都是自己的，
+> 原始游戏的截图只作为本地参考（`refs/`，不入库）。
 
-| 入口 | 地址 | 托管 |
+## 玩法
+
+- **满员十五台车**：一场比赛最多 2 名真人 + 13 个机器人，真人进来就占掉一个机器人名额。
+- **两条赛道**：`夜色环路`（四车道、车流最密、弯道碎）、`荒野公路`（双车道、土路肩、长弯大坡）。
+- **三条命门**：极速、起步、压弯，三台车是取舍不是升级（街霸 400 / 暴走 750 / 铁马 1200）。
+- **路上不只是对手**：同向慢车、迎面而来的大运。撞上就被抬走，**踢飞大运额外给 1500 赏金**。
+- **打**：出拳撂倒对手（体力会被消耗）、氮气冲刺（冷却 9 秒）、摔车之后要等扶车。
+- **房间即社交**：创建房间 → 复制邀请链接发给朋友 → 对方点开就进这一间。
+  候场时房主可以放机器人、换赛道、踢掉磨蹭的人；开跑前人人要举手，
+  房主可以决定**对局中是否还收人**。
+
+## 键位
+
+| 操作 | 键 | 操作 | 键 |
+|---|---|---|---|
+| 油门 | `W` / `↑` | 压车 | `A` `D` / `←` `→`（触屏是滑条） |
+| 刹车 | `S` / `↓` | 氮气 | `空格`（冷却 9 秒） |
+| 出拳 | `J` `K` `F` | 暂停 | `Esc` / `P` |
+
+## 它跑在哪
+
+| | 地址 | 说明 |
 |---|---|---|
-| **前端（发给别人就发这个）** | <https://fray.lemonhall.me> | Vercel |
-| 前后端同一个域名 | <https://fray-api.lemonhall.me> | Cloudflare Workers |
-| 后端 API | <https://fray-api.lemonhall.me/v1/health> | Workers + Durable Objects + D1 |
+| 仓库 | `https://github.com/lemonhall/blacktop` | 代码、文档、出图脚本都在这 |
+| 后端 + API | `https://blacktop-api.lemonhall.me` | Worker：`/v1/*` 是 API，其余是静态前端 |
+| 前端（可选） | Vercel（`npx vercel --prod`） | 同一份 `web/`，只要把 `BLACKTOP_API` 指到后端 |
 
-打开就是房间浏览器：右上角输个昵称进站 → 建房或从列表里加入别人的房间 →
-房主投放机器人（免费计划即可）→ 开打。两个入口跑的是**同一份前端产物**，
-区别只是前端连的后端地址一个是绝对地址、一个是同源。
-
-> 后端为什么不直接用 `*.workers.dev`：那个域名在国内是**解析层就被污染**的，查得到、
-> 连不上。绑到自己 zone 下的子域（`wrangler.jsonc` 里的 `routes` + `custom_domain: true`）
-> 之后走的是同一套 anycast，国内直连可用。实测：不走代理
-> `curl https://fray-api.lemonhall.me/v1/health` 返回 200。
-
-![房间浏览器](docs/shots/00-rooms-list.png)
-
-> 下面这些图是**线上生产环境**的实拍（Playwright 真的打开 Vercel 上那个站点，
-> 走一遍开房 → 加入 → 放机器人 → 开打），来源与拍法见
-> [`docs/shots/README.md`](docs/shots/README.md)。
-
-| 候场：名册 + 房主控制 | 竞技场：人机混战 |
-|---|---|
-| ![候场](docs/shots/02-lobby.png) | ![混战](docs/shots/05-brawl.png) |
-
----
-
-## 这是什么
-
-一个**移植型项目**：把一份纯前端的单机俯视角吃鸡玩法，改造成"服务端权威 + 多租户 +
-人机混战"的在线版本。原版的那套美术（手绘矢量精灵、霓虹竞技场的皮）被逐字节保留，
-玩法逻辑则被重写成一份**前后端共用的确定性内核**。
-
-它同时是一个**架构演示**：一个 Cloudflare 账号怎么同时运营多个在线游戏。
-
-### 它不是什么
-
-* 不是某个开源项目的分支，也没有沿用任何现有项目的名字或代码；
-* 不是"客户端算一切、服务器只管转发"的伪联机；
-* 不需要付费计划：游戏逻辑编译进 Worker，**没有用 Worker Loader / Dynamic Workers**
-  这类需要升级计划的能力，免费计划即可部署；
-* 还**没有**账号体系（只有游客令牌）、没有语音/聊天、没有排位。
-
----
-
-## 三十秒理解架构
-
-```
-共享内核 sim/  ── 同一份纯 JS 模块 ──┬──► Durable Object 里：权威模拟（60Hz 定步）
-                                    └──► 浏览器里：只预测"我自己"的位移
-
-Worker（无状态）      只管认租户 / 认令牌 / 路由 / CORS
-Room DO（一个房间）   名册、开局、推进、可见性过滤、结算  ← 唯一的权威
-Lobby DO（一个租户）  房间目录（单点强一致）
-D1                    租户表 + 战绩表
-```
-
-* **前端只上报意图**（往哪走、朝哪打、开不开火），坐标从不上行；
-* **后端算一切**（命中、死亡、得分、谁赢），并按每个人的视角裁剪快照；
-* **草丛里看不见的敌人，根本不进你的报文**——可见性即反作弊；
-* Room DO 里**没有常驻定时器**：模拟被"客户端消息"驱动，5 秒 alarm 只做兜底。
-
-完整讲解（前端干啥 / 后端干啥 / 一局发了哪些请求，逐条）：
-
-* [`docs/architecture.md`](docs/architecture.md) —— 架构与时序
-* [`docs/protocol.md`](docs/protocol.md) —— 线协议与消息频率
-
----
+后端用自定义域而不是 `*.workers.dev`：后者在国内是**解析层就被污染**的，
+域名能查出来却连不上。`wrangler.jsonc` 里 `custom_domain: true` 表示 DNS 记录与
+证书都由 wrangler 建，不用手工去面板加。
 
 ## 本地跑起来
 
-前提：Node ≥ 20、本机已登录 `wrangler`（`npx wrangler whoami` 能返回账号即可）。
-
 ```powershell
-cd E:\development\fray
-npm install
-node tools/build.mjs            # 把 sim/ 复制进 web/sim/，并注入后端地址
-npx wrangler dev --port 8790 --local
+npm i
+Copy-Item .dev.vars.example .dev.vars   # 里面有 SESSION_SECRET 与 ADMIN_KEY（自己改）
+npx wrangler dev                        # 起在 http://127.0.0.1:8790
 ```
 
-浏览器打开 `http://127.0.0.1:8790/` —— 第一次需要注册一个租户（本地 D1 里）：
+全新克隆的本地 D1 是空的，**先注册一个租户**（租户就是"一个游戏"的名字空间）：
 
 ```powershell
-$env:ADMIN_KEY='dev-admin-key-local-only-4c72'   # 与 .dev.vars 一致
-curl.exe -X POST http://127.0.0.1:8790/v1/tenants -H "authorization: Bearer $env:ADMIN_KEY" `
-  -H "content-type: application/json" -d '{"id":"neon","displayName":"霓虹前线"}'
+$admin = (Get-Content .dev.vars | Where-Object { $_ -match '^ADMIN_KEY=' }).Split('=',2)[1]
+curl.exe -X POST http://127.0.0.1:8790/v1/tenants -H "Authorization: Bearer $admin" `
+  -H "content-type: application/json" -d '{\"id\":\"neon\",\"displayName\":\"夜色摩托\"}'
 ```
 
-想要"两个人打一局"，开两个浏览器窗口（一个用隐身模式）各自输昵称即可：
-第一个开房、往里放机器人、开打；第二个从房间列表点进来。
-
----
+然后打开 `http://127.0.0.1:8790` —— 建房、放机器人、点出发。
+换个租户就加参数：`http://127.0.0.1:8790/?tenant=neon`；
+前端连别的后端就加 `?api=https://…`（会被记进 localStorage）。
 
 ## 测试
 
-```powershell
-npm test                        # 57 个单元测试：内核、名册、权限、线格式、路由、DOM 契约、身份、手感、节奏
-npm run e2e                     # 双客户端联调（需要本机 Chrome + Playwright）
-npm run smoke                   # 纯服务端冒烟：HTTP + WebSocket 走完一局，不需要浏览器
-```
-
-`npm test` 里有几类值得单独说的断言：
-
-* **可见性**：躲在草丛里的敌人不出现在快照里，点亮之后才出现；死掉的敌人不进快照，
-  但"死掉的我自己"还在（要能看见复活倒计时）。
-* **确定性**：同一个种子生成同一张地图，解码后墙与草丛逐格一致。
-* **DOM 契约**：`web/js/*.mjs` 里引用的每一个 `id` 都必须在 `index.html` 里存在——
-  这条能挡住"改了 id 导致某个按钮静默失灵"这类最容易漏的问题。
-* **名册/权限**：非房主改机器人数量、改模式、开局，都必须被服务端拒绝。
-* **身份闸门**：改名要重签令牌，但"先发出、后到达"的旧令牌不能覆盖新的——
-  否则会出现"用令牌 A 建房、用令牌 B 连 socket"，表现就是**房主忽然没有房主权限**。
-  这条只有在跨境延迟（几百毫秒 + 抖动）下才会现形，本地跑一百遍都不一定复现，
-  所以必须写成测试钉住。
-* **手感（延迟链路对拍）**：`tests/netcode-replay.test.mjs` 把"会抖、会堵"的链路
-  做成可编程的模型，让真实的客户端模块隔着它跟权威端跑几秒，然后量两件事——
-  本机画面有没有往后退、有没有偏离"从出生点重放全部命令"那条理想轨迹。同一段
-  输入还会跑一个**对照组**，把对账规则换回旧版；对照组每次都被拽回几十上百像素，
-  证明这条测试真的看得见那个 bug，而不是恰好断言在一个死数字上。
-* **节奏（画面不一顿一顿）**：`tests/room-ticker.test.mjs` 钉住"世界按 50ms 网格
-  推进"——计时器晚醒也不改步伐、没到点就什么都不做、DO 被冻住时只丢快照而不丢
-  世界时间；`tests/room-match.test.mjs` 钉住推进的零头不丢；`tests/wire.test.mjs`
-  钉住快照的世界时间带毫秒精度（只有 100ms 精度的话，插值会每 100ms 顿一下）。
-
-`npm run e2e` 更有意思：它真的开两个 Chrome，一个开房一个加入，走完
-**开房 → 列表里看到 → 点进去 → 房主加机器人 → 开打 → 两边进场 → 移动 → 对射**，
-并且断言"开打后 2.5 秒内必须有第一帧快照"这种时序上的硬要求。
-
-> E2E 只用本机 Chrome（`channel:"chrome"`），不会去下载 Playwright 自带的浏览器。
-> Playwright 需要装在仓库里（`npm i -D playwright`），或者全局装好后给它指路：
-> `$env:E2E_PLAYWRIGHT_DIR='E:\dev-state\npm-global\node_modules'; npm run e2e`
-
-`npm run smoke` 是部署后最省事的那道自检——16 条断言，几秒钟出结果。它打的是
-**线上**还是本地，全看环境变量：
+三条命令，各验一层，**都不碰线上账号、不花一分钱**：
 
 ```powershell
-$env:SMOKE_BASE='https://fray-api.lemonhall.me'
-$env:HTTPS_PROXY='http://127.0.0.1:7897'; $env:NODE_USE_ENV_PROXY='1'   # 国内直连打不通时
-node tools\smoke.mjs
+npm test        # 82 项单元测试：共享内核、名册状态机、时间算术、线协议、赏金
+npm run smoke   # 40 项冒烟：只用 HTTP + WebSocket 打一遍服务端契约（跑在已启动的 dev 上）
+npm run e2e     # 23 项联调：真 Chrome、两个客户端、从建房跑到结算
+npm run shots   # 顺手出图到 docs/shots/
 ```
 
-它是纯 Node（只用内置 `fetch` / `WebSocket`），所以 CI 里不需要 Chrome。
+| 命令 | 它回答的问题 | 需要什么 |
+|---|---|---|
+| `npm test` | "内核算得对吗"——赛道、物理、AI、命令队列、房间时钟、线协议 | 只要 Node 20+ |
+| `npm run smoke` | "这次部署还能玩吗"——路由、令牌、房间闸门、多租户隔离 | 已启动的 `wrangler dev`（或线上后端） |
+| `npm run e2e` | "界面与渲染这条线通吗"——两个真人、补位、播报、跑完全程结算 | 本机 Chrome（用 `channel:"chrome"`，**不下载** Playwright 自带浏览器） |
 
----
+冒烟与联调都可以打线上：
+
+```powershell
+$env:SMOKE_BASE='https://blacktop-api.lemonhall.me'; npm run smoke
+$env:E2E_BASE='https://blacktop-api.lemonhall.me'; npm run e2e    # 只读，不改线上数据以外的任何东西
+```
+
+## 多租户：一个账号跑好几款游戏
+
+租户是真正的隔离边界，不是装饰字段：
+
+| 层 | 机制 |
+|---|---|
+| 房间宇宙 | Durable Object 名 = `${tenant}:${roomId}`，两家的房间是两个不同的对象 |
+| 令牌 | 载荷里签着租户，**令牌的租户必须等于房间的租户**，否则 401 |
+| 配额 | D1 `tenants.rules`：每租户的房间数、真人上限、机器人上限、是否允许游客 |
+| 前端 | `?tenant=` / `?api=` 切换，同一个静态包能连不同租户 |
+
+冒烟里的"多租户"那几条就是钉这个的：A 租户的房间目录里看不见 B 租户的房间，
+A 的令牌闯 B 的房间被拒。
 
 ## 部署
 
-后端（Cloudflare Workers + Durable Objects + D1）：
-
 ```powershell
-$env:HTTPS_PROXY='http://127.0.0.1:7897'       # 走本机代理
-npx wrangler d1 create fray                     # 首次：把返回的 database_id 填进 wrangler.jsonc
-npx wrangler deploy
-npx wrangler secret put SESSION_SECRET          # 生产密钥：签玩家令牌
-npx wrangler secret put ADMIN_KEY               # 生产密钥：注册租户用
+npx wrangler d1 create blacktop            # 把返回的 database_id 填进 wrangler.jsonc
+npx wrangler secret put SESSION_SECRET     # 令牌签名密钥
+npx wrangler secret put ADMIN_KEY          # 注册租户用的管理员密钥
+npx wrangler deploy                        # 自定义域 blacktop-api.lemonhall.me 由 wrangler 建
+
+# 注册第一个租户
+curl.exe -X POST https://blacktop-api.lemonhall.me/v1/tenants `
+  -H "Authorization: Bearer $env:ADMIN_KEY" -H "content-type: application/json" `
+  -d '{\"id\":\"neon\",\"displayName\":\"夜色摩托\"}'
+
+$env:SMOKE_BASE='https://blacktop-api.lemonhall.me'; npm run smoke   # 部署完立刻自检
 ```
 
-前端（同一份 `web/` 产物，可以放到任何静态托管上）：
+前端想单独放 Vercel：`npx vercel --prod`，`vercel.json` 已经把
+`BLACKTOP_API` 指到后端、`outputDirectory` 指到 `web/`（`.vercelignore` 里
+挡掉了 `.wrangler/` 与 `.dev.vars`——前者在 `wrangler dev` 跑着时是独占锁，
+上传会以 `EBUSY` 失败且不告诉你为什么）。
 
-```powershell
-vercel link --yes --project fray                # 首次：把仓库绑到一个 Vercel 项目
-vercel --prod                                   # 之后每次部署都是一条命令
-```
+## 文档
 
-> 本地同时跑着 `wrangler dev` 时，`.wrangler/` 是独占锁定的，Vercel CLI 上传前
-> 会把它读一遍，于是整条部署以 `EBUSY: resource busy or locked, read` 失败
-> （而且不告诉你是哪个文件）。仓库里的 [`.vercelignore`](.vercelignore) 已经把它
-> 挡在外面了，顺手也挡住了不该外传的 `.dev.vars`。
+| 文件 | 写给谁 | 内容 |
+|---|---|---|
+| [docs/architecture.md](docs/architecture.md) | 架构师 | 前端做什么、后端做什么、边界为什么划在那里、多租户与时间模型 |
+| [docs/flow.md](docs/flow.md) | 架构师 / 集成方 | **一局比赛打了哪些请求**，每条请求长什么样、解决什么问题 |
+| [docs/protocol.md](docs/protocol.md) | 实现者 | 线协议字段表、三条不变式、改协议的三条规矩 |
+| [docs/shots/](docs/shots/) | 所有人 | 界面截图与"怎么重新出这批图" |
 
-这里不需要手工设 `FRAY_API`：它写在 [`vercel.json`](vercel.json) 的 `build.env` 里，
-Vercel 云端跑 `npm run build` 时会自动注入，**GitHub 推一下就会重建生产环境**——
-所以这个仓库的推送即部署，前端不会和后端漂移。
-
-想手工出产物（比如发到别的静态托管）就照旧：
-
-```powershell
-$env:FRAY_API='https://fray-api.<你的子域>.workers.dev'; node tools/build.mjs
-```
-
-`web/` 既是 Worker 的静态资源目录（同源部署时前端后端一个域名），也是 Vercel 的
-输出目录（跨域部署时前端走 `?api=` / 构建期注入）。**同一份产物，两种部署方式**，
-这就是"前端可以被换掉"的具体含义。
-
-上线之后注册线上租户（不带 `--local` 的那些 wrangler 命令操作的就是真实资源）：
-
-```powershell
-curl.exe -X POST https://fray-api.lemonhall.me/v1/tenants `
-  -H "authorization: Bearer $env:ADMIN_KEY" -H "content-type: application/json" `
-  -d '{"id":"neon","displayName":"霓虹前线"}'
-```
-
----
-
-## 目录
+## 代码结构
 
 ```
-sim/        共享内核（服务端与浏览器同一份）：地图 / 角色 / 战斗 / 子弹 / AI / 世界推进 / 线格式
-src/        Worker 与 Durable Object：路由 / 认证 / 租户 / Lobby / Room / 结算
-web/        静态站点：index.html + 原版皮肤 game.css + 联机层 net.css + js/ 各模块
-tools/      build（复制内核+注入地址）/ extract-original（一次性抽取原版皮肤）/ rebrand
-            smoke（纯服务端冒烟，无浏览器）/ e2e-local（双 Chrome 联调）
-            latency-proxy（TCP 延迟注入）/ netcode-probe（手感探针，挂延迟代理跑）
-            pacing-probe（节奏探针，纯 Node）/ pacing-browser（节奏探针，真浏览器）
-            pacing-stats（上面两个探针共用的重放与统计）
-tests/      node:test —— 内核、名册、权限、线格式、路由、DOM 契约、身份、手感
-docs/       architecture.md（架构与时序）、protocol.md（线协议）、shots/（截图）
+sim/    共享内核：服务端与浏览器逐字相同（赛道 / 物理 / 车流 / AI / 线协议）
+src/    后端：Worker 入口 + Room DO + Lobby DO + D1 战绩
+web/    前端：静态站点，没有打包器，直接 import /sim/*.mjs
+tests/  单元测试        tools/  构建、冒烟、联调、出图、探针
 ```
 
----
+三条工程约定，写在这里是因为它们经常被违反：
 
-## 现状
+1. **只有一份真相**。赛道数据、物理、线协议都在 `sim/`；前端的选项列表直接从
+   它渲染，后端的 `/v1/meta` 也从它生成。复制一份常量是这类项目最常见的腐烂。
+2. **单个文件尽量不超过 300 行**。超了就按职责拆成兄弟文件，不是塞进一个更大的
+   "总文件"。
+3. **界面跟着服务端走**。大厅、候场、赛道、结算四屏的状态都由服务端消息驱动，
+   客户端的本地预测只负责"我自己这台车看起来顺不顺"。
 
-**已上线**：后端 `fray-api.lemonhall.me`（免费计划，无 Worker Loader），
-前端 `fray.lemonhall.me`；单元测试 78/78，本地冒烟 27/27、本地双客户端 E2E 15/15，
-线上冒烟 27/27、线上双客户端 E2E 15/15 通过。
+## 许可
 
-已经能玩：
-
-* 房间浏览器（列房间 / 建房 / 快速匹配 / 排行榜 / 最近战绩），多租户；
-* **邀请链接**：候场页一条「复制邀请链接」（`?room=房间码`，大小写都认），
-  发给朋友点开就直接进这一间——不用先回列表里对房间号；房间散了会明确告诉你
-  "这一间进不去"，而不是干等一条连不上的连接；
-* 候场名册、房主投放机器人、调难度、换模式、开局；
-* **候场里的回合**：第一次进房先起名（存本地，之后不用再输）；分队模式里自己选边
-  （也可以交给系统自动分，一边最多三人）；点「我准备好了」——**全员举手房主才能开打**；
-  房主可以把磨蹭的人请出去（十分钟内不许再进这一间）；「允许中途加入」是房主开关，
-  关掉之后开打即谢客，但在房里的人重连不受影响；
-* 两种模式：**热点争夺 3v3**（占点、可重生）与**荒野生存 10 人混战**（缩圈、最后存活）；
-* 人机混战：AI 会占点、找掩体、找补给、预判射击、感知式躲弹；
-* 局内三选一强化（最多 6 级）、战术装置（手雷 / 相位盾 / 修复器）、大招、闪避；
-* 服务端结算、战绩落库、排行榜；
-* 中途加入（掉线的人角色留在场上，重连接着用同一个实体）。
-* 中途加入的真人**占掉机器人的名额**：3v3 不会在补位时变成 4v3。
-* **房间列表的人数上限和租户规则一致**：快速匹配按同一个数挑房间，
-  不会再把人塞进一间其实已经满员的房、进门才被弹回来。
-* **长局不会被后台悄悄回收**：房间的"还活着"只看还有没有人连着、有没有人说话，
-  打满一局（十分钟以上）名册也不会被清空，候场里的"等待 N 秒"也会自己走。
-* 切模式切到超员（比如十人混战切回 3v3）时，开打按钮会变灰并写明原因。
-* **跨境链路上移动不"被拽回"**：本地预测 + 命令时间线对账，100ms 单向延迟 +
-  30ms 抖动 + 1.2 秒拥塞窗口实测，最大单帧回退从 288px 降到 0.1px（详见
-  `docs/architecture.md` 的"为什么移动不会被拽回去"）。
-* **跨境链路上画面不一顿一顿**：世界按 50ms 网格推进（线上实测相邻快照的世界时间
-  差恒为 50ms）+ 带死区的对称渲染头。把线上真浏览器采到的快照喂给重放器：每帧
-  位移的变异系数从 2.251 降到 0.079，冻住帧占比从 83.4% 降到 0.6%（详见
-  `docs/architecture.md` 的"为什么画面不会一顿一顿"）。
-
-已知取舍 / 下一步：
-
-* 游客令牌无状态，**不能主动吊销**；要接真实账号得用 `POST /v1/{tenant}/sessions`；
-* 没有观战席：中途进来就是直接进场补位（对小体量 demo 更划算）；
-* 单区域 D1；要做全球低延迟得把战绩读写拆到 D1/外部存储的合适区域；
-* 线格式是 JSON，带宽不是当前的优化目标（可读性优先）；
-* Room 里的世界只在内存 + 房间存储里，没有做跨房间的观战/回放。
-
----
-
-## 命名与授权
-
-项目名、文案、代码全部为本项目自有。原版那份单机 HTML 只作为**美术与玩法参考**：
-它的 CSS 与矢量精灵被逐字节抽取保留（见 `tools/extract-original.mjs`），
-游戏逻辑是在共享内核里重写的。两者没有代码继承关系，也没有沿用彼此的名字。
-
-MIT License。
+MIT

@@ -6,6 +6,7 @@
  */
 
 import { clock1 } from "/sim/constants.mjs";
+import { prizeOf } from "./payout.mjs";
 import { S } from "./state.mjs";
 
 const $ = id => document.getElementById(id);
@@ -26,10 +27,11 @@ export function showResults(results) {
   $("resultDowns").textContent = me ? me.downs : 0;
   $("resultDayuns").textContent = me ? me.dayuns : 0;
   $("resultCrashes").textContent = me ? me.crashes : 0;
-  $("resultPayout").textContent = money(me ? me.cash : 0);
+  // 赏金的权威来源是 `results.payout`（见 `payout.mjs`），不是 `players[].cash`。
+  $("resultPayout").textContent = money(me ? prizeOf(results, me.ownerId) : 0);
   $("resultRecord").textContent =
     `${results.track === "wild" ? "荒野公路" : "夜色环路"} · 全场 ${results.players.length} 台车`;
-  standings(results.players || [], me);
+  standings(results, me);
   confetti(win);
   $("results").classList.remove("hidden");
   $("screenReaderStatus").textContent = win ? "你第一个冲线。" : `比赛结束，第 ${rank} 名。`;
@@ -43,10 +45,10 @@ export function hideResults() {
 const money = n => "¥" + (n || 0).toLocaleString("zh-CN");
 
 /** 完整成绩单：谁跑了多久、撂倒几个、赏金多少。这是赛后唯一能复盘的地方。 */
-function standings(players, me) {
+function standings(results, me) {
   const box = $("resultTable");
   box.replaceChildren();
-  for (const p of players) {
+  for (const p of results.players || []) {
     const row = document.createElement("div");
     const cls = ["result-row"];
     if (me && p.ownerId === me.ownerId) cls.push("me");
@@ -58,7 +60,7 @@ function standings(players, me) {
       p.dnf ? "未完赛" : clock1(p.time || 0),
       String(p.downs),
       String(p.dayuns),
-      money(p.cash),
+      money(prizeOf(results, p.ownerId)),
     ];
     for (const text of cells) {
       const cell = document.createElement("span");

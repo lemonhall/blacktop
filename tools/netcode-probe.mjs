@@ -8,7 +8,8 @@
  * 用法：
  *   node tools/netcode-probe.mjs                    # 100ms 单向 + 30ms 抖动 + 周期拥塞
  *   PROBE_DELAY=150 PROBE_STALL=300 node tools/netcode-probe.mjs
- *   PROBE_OUT=.fray-scratch/netcode.json node tools/netcode-probe.mjs
+ *   PROBE_OUT=.blacktop-scratch/netcode.json node tools/netcode-probe.mjs
+ *   PROBE_KEY=KeyA node tools/netcode-probe.mjs     # 换个轴（默认是油门 KeyW）
  *
  * 需要：本机已在 8790 上跑着 `npx wrangler dev`（本脚本自己不起服务），
  * 以及 Playwright + 本机 Chrome（`channel:"chrome"`，不下载自带浏览器）。
@@ -38,9 +39,15 @@ const STALL = Number(process.env.PROBE_STALL ?? 0);
 const HOLD_MS = Number(process.env.PROBE_HOLD ?? 6000);
 const HEADLESS = process.env.PROBE_HEADED !== "1";
 
-/** 按住的键 → 投影轴与正方向（W 往上走 = y 变小）。 */
+/**
+ * 按住的键 → 投影轴与正方向。
+ *
+ * 赛车有两个自由度，而它们**不是同一件事**：油门（W）推的是"沿路跑了多少米"（z），
+ * 压车（A/D）推的是"离路中心多少米"（x）。被拽回的现象在两条轴上都可能出现，
+ * 但主运动轴才是玩家一眼就能看出来的那一条——所以默认探油门。
+ */
 const KEY_AXIS = {
-  KeyW: ["y", -1], KeyS: ["y", 1], KeyA: ["x", -1], KeyD: ["x", 1],
+  KeyW: ["z", 1], KeyS: ["z", -1], KeyA: ["x", -1], KeyD: ["x", 1],
 };
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -58,17 +65,17 @@ async function until(fn, { timeout = 25000, every = 200, what = "条件" } = {})
 
 /** 逐帧采样**本机预测坐标**——用户眼睛看到的就是它（view.mjs 用它覆盖了权威坐标）。 */
 const SAMPLER = `
-window.__nc = { t: [], x: [], y: [], ak: [], rtt: [], gap: [], q: [] };
+window.__nc = { t: [], x: [], z: [], ak: [], rtt: [], gap: [], q: [] };
 const ncLoop = () => {
-  const S = window.FRAY && window.FRAY.S;
+  const S = window.BLACKTOP && window.BLACKTOP.S;
   const p = S && S.predictMe;
   if (p && window.__nc.t.length < 30000) {
     window.__nc.t.push(performance.now());
-    window.__nc.x.push(p.x); window.__nc.y.push(p.y);
+    window.__nc.x.push(p.x); window.__nc.z.push(p.z);
     window.__nc.ak.push(S.mine && Number.isFinite(S.mine.ak) ? S.mine.ak : -1);
     window.__nc.rtt.push(S.rtt | 0);
-    window.__nc.gap.push(S.mine ? Math.hypot(p.x - S.mine.x, p.y - S.mine.y) : 0);
-    window.__nc.q.push(S.pending ? S.pending.length : -1);
+    window.__nc.gap.push(S.mine ? Math.hypot(p.x - S.mine.x, p.z - S.mine.z) : 0);
+    window.__nc.q.push(S.cmds ? S.cmds.length : -1);
   }
   requestAnimationFrame(ncLoop);
 };
@@ -82,8 +89,8 @@ requestAnimationFrame(ncLoop);
  * 一两百像素，任何滑窗方向估计都会被它带偏，反而把要测的东西算成"前进"。
  * 探针按住的方向是确定的，所以这一层可以做到绝对干净。
  */
-function analyze({ t, x, y }, axis, sign) {
-  const comp = axis === "x" ? x : y;
+function analyze({ t, x, z }, axis, sign) {
+  const comp = axis === "x" ? x : z;
   const frames = t.length;
   let forward = 0, backward = 0, maxBack = 0, worstAt = 0, backFrames = 0;
   for (let i = 1; i < frames; i++) {
@@ -109,34 +116,30 @@ async function main() {
     await page.goto(proxy.url, { waitUntil: "domcontentloaded" });
     await page.fill("#nickInput", "探针");
     await page.dispatchEvent("#nickInput", "change");
-    await until(async () => page.evaluate(() => !!window.FRAY), { what: "前端启动完成" });
+    await until(async () => page.evaluate(() => !!window.BLACKTOP), { what: "前端启动完成" });
 
     await page.click("#openCreateButton");
     await page.fill("#createName", "手感探针场");
-    await page.fill("#createBots", "2");
+    await page.selectOption("#createMode", "city");
+    await page.selectOption("#createBots", "6");
     await page.click("#createRoomButton");
-    await until(() => page.evaluate(() => window.FRAY.S.screen === "staging"), { what: "进入候场" });
+    await until(() => page.evaluate(() => window.BLACKTOP.S.screen === "staging"), { what: "进入候场" });
     await page.click("#startButton");
-    await until(() => page.evaluate(() => window.FRAY.S.screen === "play" && !!window.FRAY.S.predictMe),
+    await until(() => page.evaluate(() => window.BLACKTOP.S.screen === "play" && !!window.BLACKTOP.S.predictMe),
       { what: "进入对局" });
+    // 发车倒数里油门是锁死的，世界也还没开始动——等它走完再计时，否则量到的
+    // 全是"倒数期间本机预测本来就不该动"这段空转。
+    await until(() => page.evaluate(() => window.BLACKTOP.S.countdown <= 0), { what: "发车倒数结束" });
     await sleep(700);
 
-    /**
-     * 第一步：挑一个真的走得动的方向（撞墙就换键）。这一步也顺手让预测器
-     * 从"刚进场"的抖动里稳下来，所以**探针正式计时从这之后才开始**。
-     */
-    let key = "KeyW";
-    for (const candidate of ["KeyW", "KeyD", "KeyS", "KeyA"]) {
-      const from = await page.evaluate(() => ({ ...window.FRAY.S.predictMe }));
-      await page.evaluate(c => document.dispatchEvent(new KeyboardEvent("keydown", { code: c })), candidate);
-      await sleep(900);
-      const to = await page.evaluate(() => ({ ...window.FRAY.S.predictMe }));
-      key = candidate;
-      if (Math.hypot(to.x - from.x, to.y - from.y) > 80) break;
-    }
+    // 探针只用一条轴：默认油门（z 往前）。这一步顺便让预测器从"刚进场"的抖动里
+    // 稳下来，所以**正式计时从这之后才开始**。
+    const key = process.env.PROBE_KEY || "KeyW";
+    if (!KEY_AXIS[key]) throw new Error(`PROBE_KEY 只能是 ${Object.keys(KEY_AXIS).join(" / ")}`);
     await page.evaluate(() => {
-      for (const k of ["t", "x", "y", "ak", "rtt", "gap", "q"]) window.__nc[k].length = 0;
+      for (const k of ["t", "x", "z", "ak", "rtt", "gap", "q"]) window.__nc[k].length = 0;
     });
+    await page.evaluate(c => document.dispatchEvent(new KeyboardEvent("keydown", { code: c })), key);
     await sleep(HOLD_MS);
     await page.evaluate(c => document.dispatchEvent(new KeyboardEvent("keyup", { code: c })), key);
     await sleep(400);
@@ -146,7 +149,7 @@ async function main() {
     const [axis, sign] = KEY_AXIS[key];
     const result = analyze(trace, axis, sign);
     const span = trace.t.length ? (trace.t[trace.t.length - 1] - trace.t[0]) / 1000 : 0;
-    const travel = sign * (axis === "x" ? trace.x.at(-1) - trace.x[0] : trace.y.at(-1) - trace.y[0]);
+    const travel = sign * (axis === "x" ? trace.x.at(-1) - trace.x[0] : trace.z.at(-1) - trace.z[0]);
     const acks = trace.ak.filter(v => v >= 0);
     const acked = acks.length ? acks.at(-1) - acks[0] : 0;
     const median = values => {
@@ -157,10 +160,11 @@ async function main() {
     const report = {
       proxy: { delayMs: DELAY, jitterMs: JITTER, stallMs: STALL },
       key, seconds: +span.toFixed(2), frames: result.frames, rttMs: rtt,
-      traveledPx: +travel.toFixed(1), forwardPx: +result.forward.toFixed(1),
-      backwardPx: +result.backward.toFixed(1), backwardFrames: result.backFrames,
-      maxBackJerkPx: +result.maxBack.toFixed(1), worstAtMs: Math.round(result.worstAt),
-      gapMedianPx: +median(trace.gap).toFixed(1), gapMaxPx: +Math.max(...trace.gap).toFixed(1),
+      // 单位是**米**（赛车的坐标系），不再是射击版的像素。
+      traveledM: +travel.toFixed(1), forwardM: +result.forward.toFixed(1),
+      backwardM: +result.backward.toFixed(1), backwardFrames: result.backFrames,
+      maxBackJerkM: +result.maxBack.toFixed(1), worstAtMs: Math.round(result.worstAt),
+      gapMedianM: +median(trace.gap).toFixed(1), gapMaxM: +Math.max(...trace.gap).toFixed(1),
       ackedCommands: acked, proxyStats: { ...proxy.stats },
     };
     console.log(JSON.stringify(report, null, 2));

@@ -8,11 +8,11 @@
  *
  * 做法：开一个真浏览器，建房、放机器人、开打，然后把 `S.snaps.push` 打个补丁，把
  * **每张快照到达的 `performance.now()` 和它的世界时间 `tm`** 记下来。拿到的序列
- * 可以直接喂给 `head-diag`（`.fray-scratch/head-diag.mjs`）重算渲染头的推进。
+ * 可以直接喂给 `pacing-stats.mjs` 的 `replay()` 重算渲染头的推进。
  *
  * 用法：
- *   node tools/pacing-browser.mjs                       # 打线上（https://fray.lemonhall.me）
- *   E2E_BASE=http://127.0.0.1:8790 node tools/pacing-browser.mjs
+ *   node tools/pacing-browser.mjs                       # 默认打本机 127.0.0.1:8790
+ *   E2E_BASE=https://blacktop.lemonhall.me node tools/pacing-browser.mjs
  *   E2E_HEADED=1 node tools/pacing-browser.mjs          # 想看着它跑
  *
  * 需要 Playwright + 本机 Chrome，路径给法同 `tools/e2e-local.mjs`。
@@ -30,7 +30,7 @@ async function loadPlaywright() {
 }
 
 const { chromium } = await loadPlaywright();
-const BASE = process.env.E2E_BASE || "https://fray.lemonhall.me";
+const BASE = process.env.E2E_BASE || "http://127.0.0.1:8790";
 const SECONDS = Number(process.env.PACE_SECONDS ?? 20);
 const OUT = process.env.PACE_DUMP || "";
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -68,8 +68,8 @@ try {
 
   await page.click("#openCreateButton");
   await page.fill("#createName", "节奏测量");
-  await page.selectOption("#createMode", "control");
-  await page.fill("#createBots", "5");
+  await page.selectOption("#createMode", "city");
+  await page.selectOption("#createBots", "6");
   await page.click("#createRoomButton");
   await until(async () => (await observe(page)).screen === "staging", { what: "进入候场" });
   await page.click("#startButton");
@@ -109,7 +109,7 @@ try {
   if (OUT) {
     const { writeFileSync } = await import("node:fs");
     writeFileSync(OUT, JSON.stringify(rows.map(r => [Math.round(r[0]), r[1], r[2]])));
-    console.log(`已写出 ${OUT}（可喂给 head-diag）`);
+    console.log(`已写出 ${OUT}（可喂给 pacing-stats.mjs 的 replay()）`);
   }
 } finally {
   await browser.close();

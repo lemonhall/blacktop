@@ -44,7 +44,7 @@ async function until(fn, { timeout = 25000, every = 200, what = "条件" } = {})
 }
 
 /**
- * `PROBE_BASE` 直接指向一个真实后端（例如 `https://fray-api.lemonhall.me`），
+ * `PROBE_BASE` 直接指向一个真实后端（例如 `https://blacktop-api.lemonhall.me`），
  * 用来量"线上"的节奏——本机的 `wrangler dev` 在浏览器轮询 + 本地 D1 的夹击下会
  * 整段冻结，量出来的长停不代表生产。
  */
@@ -73,7 +73,7 @@ const proxy = DIRECT ? null : await startLatencyProxy({
 });
 
 const guest = await json("POST", `/v1/${TENANT}/guest`, { name: "节奏探针" });
-const room = await json("POST", `/v1/${TENANT}/rooms`, { name: "节奏测试", mode: "control", bots: 4 }, guest.token);
+const room = await json("POST", `/v1/${TENANT}/rooms`, { name: "节奏测试", mode: "city", bots: 6 }, guest.token);
 
 const wsUrl = `${base.replace(/^http/u, "ws")}/v1/${TENANT}/rooms/${room.roomId}/socket?token=${encodeURIComponent(guest.token)}`;
 const ws = new WebSocket(wsUrl);
@@ -87,7 +87,7 @@ ws.addEventListener("message", event => {
   let msg;
   try { msg = JSON.parse(event.data); } catch { return; }
   log.push({ at: Date.now(), t: msg.t, tk: msg.tk });
-  if (msg.t === "s") snaps.push({ at: Date.now(), wt: msg.wt || 0, tm: msg.tm, tk: msg.tk, a: msg.a });
+  if (msg.t === "s") snaps.push({ at: Date.now(), wt: msg.wt || 0, tm: msg.tm, tk: msg.tk, r: msg.r });
   if (msg.t === "hello") ws.send(JSON.stringify({ t: "start" }));
 });
 await opened;
@@ -103,7 +103,9 @@ const pumpAt = [];
 const pump = setInterval(() => {
   if (ws.readyState !== 1) return;
   pumpAt.push(Date.now());
-  ws.send(JSON.stringify({ t: "in", sq: ++sq, mx: 0, my: 0, n: 0, k: 0, a: 0, f: 0, act: 0, r: 310 }));
+  // 摩托的操作只有五个：油门 / 刹车 / 压车（连续量）/ 氮气 / 出拳。
+  // `n: 0` 表示"这条命令不代表任何一格"，纯粹当心跳用。
+  ws.send(JSON.stringify({ t: "in", sq: ++sq, th: 0, br: 0, st: 0, nos: 0, act: 0, n: 0 }));
 }, 40);
 await sleep(SECONDS * 1000);
 clearInterval(pump);
@@ -125,7 +127,7 @@ if (process.env.PROBE_DUMP) {
 
 /** 只用一直存在的实体（机器人可能中途死掉），否则位移序列会断。 */
 const seen = new Map();
-for (const s of timeline) for (const e of s.a) seen.set(e.i, (seen.get(e.i) || 0) + 1);
+for (const s of timeline) for (const e of s.r) seen.set(e.i, (seen.get(e.i) || 0) + 1);
 const ids = [...seen.entries()].filter(([, n]) => n >= timeline.length * .8).map(([id]) => id).slice(0, 5);
 
 const { arrival, world, tk } = gaps(timeline);
@@ -147,7 +149,7 @@ const steps = [...perEntity.values()].flat();
 /** 只留"真的在动的实体"：静止的机器人在每一帧都是 0，会把中位数拉到没有意义。 */
 const moving = [...perEntity.values()].filter(v => v.length && percentile(v, .5) > .15).flat();
 if (process.env.PROBE_DEBUG === "1") {
-  console.log("ids:", ids, "timeline:", timeline.length, "q a-len:", timeline[4]?.a.length, timeline[9]?.a.length);
+  console.log("ids:", ids, "timeline:", timeline.length, "q r-len:", timeline[4]?.r.length, timeline[9]?.r.length);
   console.log("perEntity sizes:", [...perEntity.entries()].map(([k, v]) => [k, v.length]));
   console.log("frameDelta head:", perFrameDelta.slice(20, 50).map(v => round(v, 2)));
   console.log("headGap:", headGap.slice(20, 50));
@@ -193,7 +195,7 @@ console.log(JSON.stringify({
   // 同上，但剔掉"被数据边缘按住"的帧——那些帧是链路长停造成的，不该算在头部算法头上。
   headStepClean: headStepStats(headStepClean),
   // 调试用：前几帧里所有实体的原始坐标，确认"机器人到底动不动"。
-  trace: process.env.PROBE_TRACE === "1" ? snaps.slice(0, 6).map(s => s.a.map(e => [e.i, e.k, Math.round(e.x), Math.round(e.y)])) : undefined,
+  trace: process.env.PROBE_TRACE === "1" ? snaps.slice(0, 6).map(s => s.r.map(e => [e.i, Math.round(e.x), Math.round(e.z), Math.round(e.v)])) : undefined,
   // 调试用：某一个实体前 40 帧的逐帧位移（px），看波动到底是什么形状。
   sampleSeries: process.env.PROBE_TRACE === "1" ? { id: ids[ids.length - 1], px: (perEntity.get(ids[ids.length - 1]) || []).slice(20, 60).map(v => round(v, 2)) } : undefined,
 }, null, 2));

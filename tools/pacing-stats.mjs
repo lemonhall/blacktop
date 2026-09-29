@@ -80,13 +80,15 @@ export function replay(snaps, entityIds, { debug = false } = {}) {
     const [older, newer, k] = br;
     if (debug && frames > 20 && frames < 26) {
       console.log(`f=${frames} head=${head.toFixed(3)} older.tm=${older.tm} newer.tm=${newer.tm} k=${k.toFixed(3)} ` +
-        `a0=(${older.a[0].x},${older.a[0].y}) b0=(${newer.a[0].x},${newer.a[0].y})`);
+        `r0=(${older.r[0].x},${older.r[0].z}) r1=(${newer.r[0].x},${newer.r[0].z})`);
     }
     let moved = 0;
     for (const id of entityIds) {
-      const a = older.a.find(e => e.i === id), b = newer.a.find(e => e.i === id);
+      const a = older.r.find(e => e.i === id), b = newer.r.find(e => e.i === id);
       if (!a || !b) continue;
-      const x = a.x + (b.x - a.x) * k, y = a.y + (b.y - a.y) * k;
+      // 赛车是 (x, z)：z 是"沿路跑了多少米"。这一层量的是插值出来的逐帧位移，
+      // 所以换成哪个轴都成立——但它必须和 `view.mjs` 插值的那两个字段一致。
+      const x = a.x + (b.x - a.x) * k, y = a.z + (b.z - a.z) * k;
       const p = prev.get(id);
       if (p) { const d = Math.hypot(x - p[0], y - p[1]); perEntity.get(id).push(d); moved += d; }
       prev.set(id, [x, y]);
