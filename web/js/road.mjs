@@ -55,9 +55,15 @@ export function createCamera(S) {
    * 幅度刻意做得**小**：这是油门踩到底才该有的东西，不是全程都在的鱼眼。
    */
   const fast = me ? clamp((me.v || 0) / 52, 0, 1) : 0;
+  /*
+   * 第二半在**挨的那一下**上：`S.punch` 是表现层砸过来的一拳（打中人、被撞、踹飞
+   * 社会车辆各自不同份量），在这里换算成"画面往外张一下"，三百毫秒左右回位。
+   * 幅度压得很小：这是挨了一下，不是开了鱼眼。
+   */
+  const punch = S.punch || 0;
   const camZ = (me ? me.z : 0) - (CAM_BACK + fast * 1.5);
   return {
-    W: S.view.w, H: S.view.h, F: S.view.h * (PROJ - fast * 0.1),
+    W: S.view.w, H: S.view.h, F: S.view.h * (PROJ - fast * 0.1 + punch * 0.09),
     horizon: S.view.h * HORIZON,
     camX: me ? me.x : 0, camZ,
     camY: S.track.hillAt(camZ) + CAM_Y + fast * 0.1,

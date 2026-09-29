@@ -13,12 +13,12 @@ import { drawCritter } from "./critters.mjs";
 import { label } from "./labels.mjs";
 import { drawRider } from "./sprites.mjs";
 import { drawVehicle } from "./vehicles.mjs";
-import { CAR_NAME } from "./fx.mjs";
+import { CAR_NAME } from "./fxevent.mjs";
 import { PROP_SIZE, drawBuilding, propBox, propImage } from "./props.mjs";
 import { WEAPONS } from "../../sim/weapons.mjs";
 import { drawPickup } from "./weaponsart.mjs";
 import { CRITTERS } from "../../sim/critters.mjs";
-import { drawSpeedLines, speedStrength } from "./speedlines.mjs";
+import { drawOverlays } from "./overlays.mjs";
 
 export function renderGame(ctx, view) {
   if (!view || !S.track) return;
@@ -31,6 +31,9 @@ export function renderGame(ctx, view) {
   ctx.save();
   if (S.shake > 0.05) {
     ctx.translate((Math.random() - 0.5) * S.shake, (Math.random() - 0.5) * S.shake);
+    // 位移之外再拧一点点角度：只有平移的震动看着像画面在"抖"，加上滚转才像
+    // 整台摄像机被人从侧面撞了一下。幅度按像素比例给，换分辨率不会变重。
+    ctx.rotate((Math.random() - 0.5) * S.shake * 0.0009);
   }
   // 天色读的是**赛道**（`maps.mjs` 里的 `sky`），不是房间里的模式名：
   // 一条路的天和地是一对，分开写迟早会出现"沙漠上挂着红杉林的天"。
@@ -229,57 +232,5 @@ function drawRacerSprite(ctx, cam, tbl, r, view) {
   if ((r.kind === "human" || me) && p.ppm > 0.3) {
     label(ctx, p.sx, p.sy - 2.9 * p.ppm, r.name, me ? "#ffd88a" : "#dfe8ff",
       Math.min(15, 0.55 * p.ppm + 8));
-  }
-}
-
-/** 前景：倒数、播报、速度线、暗角。全部是"屏幕上"的东西，不参与世界坐标。 */
-function drawOverlays(ctx, view, cam) {
-  const W = cam.W, H = cam.H;
-  const me = view.mine;
-  const speed = me ? Math.max(0, me.v) : 0;
-  const strength = speedStrength(speed);
-  // 速度线是"景物在动"，不是"屏幕上有划痕"——所以它是**从消失点放射**的，
-  // 详见 `speedlines.mjs` 里那段说明。
-  drawSpeedLines(ctx, cam, speed, performance.now() / 1000);
-  const vig = ctx.createRadialGradient(W / 2, H * 0.52, H * 0.3, W / 2, H * 0.5, H * 0.95);
-  vig.addColorStop(0, "rgba(0,0,0,0)");
-  // 暗角是"把视线压回路面"的一招，但 0.5 会把荒野正午的四角直接压成黑橄榄色
-  // （拿像素探针量过：路面 #565550 不变、路肩 #8c7c56 被压成 #453e28）。
-  // 满速时再收紧六分：高速的隧道感来自这里，不是来自线。只加这一点，
-  // 是因为上面那条量过的界线一动就要重画整个调色。
-  vig.addColorStop(1, `rgba(0,0,0,${(0.44 + strength * 0.06).toFixed(3)})`);
-  ctx.fillStyle = vig;
-  ctx.fillRect(0, 0, W, H);
-
-  if (view.countdown > 0) {
-    const n = Math.ceil(view.countdown);
-    const text = n > 3 ? "准备" : n > 1 ? String(n - 1) : "GO!";
-    const frac = 1 - (view.countdown % 1);
-    ctx.save();
-    ctx.globalAlpha = Math.min(1, 0.35 + frac * 1.4);
-    ctx.translate(W / 2, H * 0.34);
-    ctx.scale(1 + (1 - frac) * 0.5, 1 + (1 - frac) * 0.5);
-    ctx.font = `900 ${Math.round(H * 0.18)}px system-ui, "Microsoft YaHei", sans-serif`;
-    ctx.textAlign = "center";
-    ctx.lineWidth = H * 0.02; ctx.strokeStyle = "rgba(6,9,18,.9)";
-    ctx.strokeText(text, 0, 0); ctx.fillStyle = "#ffe874"; ctx.fillText(text, 0, 0);
-    ctx.restore();
-  }
-  if (FX.announce) {
-    const age = (performance.now() - FX.announce.at) / 1000;
-    if (age < 2.4) {
-      ctx.save();
-      ctx.globalAlpha = Math.max(0, 1 - age / 2.4);
-      ctx.translate(W / 2, H * 0.24 - age * 14);
-      ctx.textAlign = "center";
-      ctx.font = `900 ${Math.round(H * 0.062)}px system-ui, "Microsoft YaHei", sans-serif`;
-      ctx.lineWidth = H * 0.012; ctx.strokeStyle = "rgba(6,9,18,.9)";
-      ctx.strokeText(FX.announce.title, 0, 0);
-      ctx.fillStyle = FX.announce.color || "#ffd23f";
-      ctx.fillText(FX.announce.title, 0, 0);
-      ctx.font = `600 ${Math.round(H * 0.026)}px system-ui, "Microsoft YaHei", sans-serif`;
-      ctx.fillStyle = "#dfe8ff"; ctx.fillText(FX.announce.sub || "", 0, H * 0.05);
-      ctx.restore();
-    } else FX.announce = null;
   }
 }

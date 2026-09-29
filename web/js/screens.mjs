@@ -52,6 +52,7 @@ export function resetMatchState() {
   // 而触发一次瞬移，发车瞬间画面就会跳一下。
   S.wall = 0; S.lastTm = 0; S.headTm = 0; S.headAt = 0;
   S.countdown = 0; S.shake = 0; S.hitUntil = 0; S.swing = 0; S.swingBack = false;
+  S.punch = 0; S.flash = 0;
   S.pendingEvents = [];
   FX.sparks = []; FX.smoke = []; FX.floaters = []; FX.skid = [];
   FX.feed = []; FX.announce = null;
