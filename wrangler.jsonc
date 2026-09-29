@@ -33,7 +33,9 @@
     {
       "binding": "DB",
       "database_name": "blacktop",
-      "database_id": "PLACEHOLDER_LOCAL_ONLY"
+      // 线上库（2026-09-30 由 `wrangler d1 create blacktop` 建好，region WNAM）。
+      // 本地 `wrangler dev` 用的是 .wrangler/ 下的本地副本，与这个 id 无关。
+      "database_id": "67491541-37bd-45af-ac9f-b7a25b01fd04"
     }
   ],
 

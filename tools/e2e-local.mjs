@@ -155,6 +155,11 @@ async function main() {
 
     // 压车：A 键往左。横向坐标是"离路中心多少米"，所以左压 = x 变小。
     // `lean` 必须在**压着的时候**采样：松开之后车会自己回正，那之后再读就是 0。
+    //
+    // 先往右扳一下再往左压：上一步在弯里跑了一段，车完全可能已经贴在左边的
+    // 路肩边界上（线上实测 x 已经是 -9.40，也就是最小），那样"再往左"根本没有
+    // 位移可测——这条断言会变成一条"看运气"的测试，而不是"压车有没有效"的测试。
+    await holdKeys(host, ["KeyW", "KeyD"], 700);
     const straight = (await observe(host)).self;
     await keyDown(host, "KeyW");
     await keyDown(host, "KeyA");

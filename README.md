@@ -30,11 +30,23 @@
 
 ## 它跑在哪
 
+**直接打开 <https://blacktop-api.lemonhall.me> 就能玩**——Worker 一边提供 `/v1/*`
+接口，一边把 `web/` 当静态资源发出去，所以前后端同源、不跨域、一次部署。
+
 | | 地址 | 说明 |
 |---|---|---|
 | 仓库 | `https://github.com/lemonhall/blacktop` | 代码、文档、出图脚本都在这 |
-| 后端 + API | `https://blacktop-api.lemonhall.me` | Worker：`/v1/*` 是 API，其余是静态前端 |
-| 前端（可选） | Vercel（`npx vercel --prod`） | 同一份 `web/`，只要把 `BLACKTOP_API` 指到后端 |
+| 线上（可玩） | `https://blacktop-api.lemonhall.me` | Cloudflare Workers + Durable Objects + D1 |
+| 前端（可选） | Vercel（`npx vercel --prod`） | 同一份 `web/`，`BLACKTOP_API` 指向后端即可 |
+
+线上自检（不用开浏览器，30 秒）：
+
+```powershell
+$env:SMOKE_BASE='https://blacktop-api.lemonhall.me'; npm run smoke
+```
+
+部署之后的自检记录（2026-09-30）：冒烟 **40 / 40**、联调 **23 / 23** 通过，
+都是在线上域上跑的真链路（含线上多租户隔离、两个真人、中途补位、跑完结算）。
 
 后端用自定义域而不是 `*.workers.dev`：后者在国内是**解析层就被污染**的，
 域名能查出来却连不上。`wrangler.jsonc` 里 `custom_domain: true` 表示 DNS 记录与
