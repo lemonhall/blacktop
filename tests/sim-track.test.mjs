@@ -84,6 +84,83 @@ test("发车格：十五台车错开成三列，不重叠、都在起点之后",
   assert.ok(slots[0].z > slots[14].z, "序号越大越靠后");
 });
 
+/**
+ * 路边道具的**分布**：不许挤成一堆。
+ *
+ * 背景是一次真实的翻车：荒野公路上抽到一颗种子，一屏之内立了三座一模一样的井架。
+ * 每一槽独立摇号，概率上没错；看起来就是贴图复制粘贴。修法是给每种道具算一条
+ * "最小间距"（权重越低、间隔越长），所以这里钉的是三条**设计性质**，不是具体数字：
+ *   1. 同一种不许连着两槽出现；
+ *   2. 越稀有的，两次之间隔得越远（不然"稀有"只体现在总数上，看不出来）；
+ *   3. 一屏（660 米）之内，稀有地标最多两件。
+ */
+test("同一种道具不会挨着长：两次之间至少隔开一槽", () => {
+  for (const mode of Object.keys(MODES)) {
+    const t = createTrack({ seed: 77, mode });
+    const last = new Map();
+    for (const p of t.propsBetween(0, 2600)) {
+      const prev = last.get(p.kind);
+      if (prev !== undefined) {
+        assert.ok(p.i - prev >= 2,
+          `${mode}：第 ${prev} 槽和第 ${p.i} 槽都长出了 ${p.kind}，它们挨着`);
+      }
+      last.set(p.kind, p.i);
+    }
+  }
+});
+
+test("越稀有的道具隔得越远：最少见的那个，间距至少是最常见的四倍", () => {
+  for (const mode of Object.keys(MODES)) {
+    const weights = MODES[mode].scenery;
+    const kinds = Object.keys(weights);
+    const rare = kinds.reduce((a, b) => (weights[a] <= weights[b] ? a : b));
+    const common = kinds.reduce((a, b) => (weights[a] >= weights[b] ? a : b));
+    // 拿**实际长出来的**间距量，而不是再算一遍公式：公式改了，这条测试还得成立。
+    const gaps = new Map();
+    for (let seed = 1; seed <= 60; seed++) {
+      const last = new Map();
+      for (const p of createTrack({ seed, mode }).propsBetween(0, 2600)) {
+        const prev = last.get(p.kind);
+        if (prev !== undefined) gaps.set(p.kind, Math.min(gaps.get(p.kind) ?? 99, p.i - prev));
+        last.set(p.kind, p.i);
+      }
+    }
+    const rareGap = gaps.get(rare), commonGap = gaps.get(common);
+    assert.ok(rareGap && commonGap, `${mode}：${rare} / ${common} 一整条路都没长出来过`);
+    assert.ok(rareGap >= commonGap * 4,
+      `${mode}：${rare}（权重 ${weights[rare]}）只隔 ${rareGap} 槽就再来一件，` +
+      `${common}（权重 ${weights[common]}）隔 ${commonGap} 槽——稀有的那件没被推开`);
+  }
+});
+
+test("一屏之内最多两件稀有地标（回归：荒野上那三座井架）", () => {
+  for (const mode of Object.keys(MODES)) {
+    const weights = MODES[mode].scenery;
+    const rare = Object.keys(weights).filter(k => weights[k] <= 0.45);
+    for (let seed = 1; seed <= 120; seed++) {
+      const props = createTrack({ seed, mode }).propsBetween(0, 660);
+      for (const kind of rare) {
+        const n = props.filter(p => p.kind === kind).length;
+        assert.ok(n <= 2, `${mode} 种子 ${seed}：一屏之内有 ${n} 件 ${kind}`);
+      }
+    }
+  }
+});
+
+test("压掉成簇之后，彩蛋仍然找得到（没有顺手把稀有件全挡没）", () => {
+  for (const mode of Object.keys(MODES)) {
+    const weights = MODES[mode].scenery;
+    const egg = Object.keys(weights).find(k => weights[k] <= 0.2);
+    assert.ok(egg, `${mode} 没有彩蛋了`);
+    let found = 0;
+    for (let seed = 1; seed <= 120; seed++) {
+      const t = createTrack({ seed, mode });
+      if (t.propsBetween(0, t.length).some(p => p.kind === egg)) found++;
+    }
+    assert.ok(found >= 60, `${mode}：120 局里只有 ${found} 局能找到 ${egg}，太藏了`);
+  }
+});
+
 test("表现层随机源与模拟随机源是两条独立的流", () => {
   const a = cosmeticRng(7), b = cosmeticRng(7);
   assert.equal(a(), b(), "同种子同序列");
