@@ -20,6 +20,7 @@ import { shade, trapezoid } from "./art.mjs";
 import { grainOverlay } from "./grain.mjs";
 import { tonesOf } from "./grounds.mjs";
 import { seaBand, shoulderDetail, tyreTracks } from "./roadwear.mjs";
+import { fieldDetail } from "./fieldwear.mjs";
 
 /** 焦距 = 画面高度 × 这个数。1.25 对应约 70° 的水平视野，是追尾视角的舒适区。 */
 const PROJ = 1.25;
@@ -179,7 +180,9 @@ export function drawRoad(ctx, cam, tbl, S) {
     if (yN - yF < 0.6) continue;
     if (yF > cam.H + 2) break;
     const z = (tbl.zs[i] + tbl.zs[i + 1]) / 2;
-    const geom = { far, near, yF, yN, z };
+    // `dz` 是这一片沿 z 的长度：路外那些**贴在地上**的东西（土斑、落叶）要按它
+    // 算出"纵向被压扁了多少"。不压的话，脚下那些斑会画成正圆——像浮在空中的圆片。
+    const geom = { far, near, yF, yN, z, dz: tbl.zs[i + 1] - tbl.zs[i] };
     /*
      * **这一片到底有多高**——低于两个像素的那几片，路肩上的砂砾、轮胎压出来的沟、
      * 水滴的倒影全都画不出一个像素来，却要照样发几十次画布调用。八条路的痕迹是
@@ -204,6 +207,9 @@ export function drawRoad(ctx, cam, tbl, S) {
     if (tall) {
       // 车轮压出来的沟：两条一起，一左一右
       tyreTracks(ctx, laneXs, geom, tone.rut);
+      // 路肩之外那一片地（干草、沙纹、雪脊、落叶）：先铺它，再铺贴着路缘的东西，
+      // 于是"从路里往外长"的那几笔自然压在它上面。
+      fieldDetail(ctx, track.ground, geom);
       // 路肩上的痕迹**在路面之后画**：沙漠的沙是从路肩往路面上爬的，先画就被路面盖掉了
       shoulderDetail(ctx, track.ground, geom);
     }

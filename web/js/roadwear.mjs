@@ -69,9 +69,8 @@ const DETAIL = {
     bits(ctx, g, "rgba(58,46,26,.5)", 4, 2.6);
   },
   snow: (ctx, g) => {
-    // 除雪车把雪推到两边：贴路缘那一截是**最亮的**，再往外才是背光的蓝灰
-    band(ctx, g, 0, 1.1, "rgba(255,255,255,.62)");
-    band(ctx, g, 1.1, 3.2, "rgba(150,172,204,.22)");
+    // 除雪车推出来的那道雪墙住在 `fieldwear.mjs`（它比"路面上的一层痕"更厚、
+    // 更高，属于路外面那一层）。这里只管落在**路缘石上**的几粒
     bits(ctx, g, "rgba(255,255,255,.8)", 3, 3.4);
   },
   works: (ctx, g) => {
@@ -161,7 +160,7 @@ export function shoulderDetail(ctx, ground, g) {
  * 贴着路缘往外（`from` 到 `to` 米）的一条带子。负的米数就是**往路面上**爬。
  * 一条带子用四个点就够了：远处两条边、近处两条边。
  */
-function band(ctx, g, from, to, color) {
+export function band(ctx, g, from, to, color) {
   const { far, near, yF, yN, side } = g;
   // 路缘外沿就是 0 米：`hw` 是路面半宽，`rumble` 是路缘石自己的半宽
   const at = (s, m) => s.x + side * (s.hw + s.rumble + m * s.ppm);

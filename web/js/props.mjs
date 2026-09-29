@@ -13,7 +13,9 @@
  *   - `propsrock.mjs`   原木堆、巨石、石头、草垛、风滚草；
  *   - `propsroad.mjs`   路灯、路牌、信号灯、护栏、雪杆（沿路一根接一根的那种）；
  *   - `propsstreet.mjs` 消防栓、候车亭、长椅、探照灯、招牌、龙门架（一段冒一个）；
- *   - `propsbuild.mjs`  地标：报刊亭、谷仓、风车、水塔、井架、灯塔；
+ *   - `propsbuild.mjs`  地标：报刊亭、谷仓、灯塔；
+ *   - `propssteel.mjs`  格构钢架：风车、水塔、井架（这几件是"四条腿 + 斜撑"，
+ *     难点和那一半"一个体块 + 一层表皮"完全不同，值得单开一间）；
  *   - `propsyard.mjs`   近处：护林站、山地木屋、筒仓、集装箱、油桶；
  *   - `buildings.mjs`   楼房（它的尺寸跨度和分层都比别的道具大一号）；
  *   - `parts.mjs`       材质：木头、钢、水泥、雪、玻璃、锈。
@@ -29,6 +31,7 @@ import * as rock from "./propsrock.mjs";
 import * as road from "./propsroad.mjs";
 import * as street from "./propsstreet.mjs";
 import * as build from "./propsbuild.mjs";
+import * as steel from "./propssteel.mjs";
 import * as yard from "./propsyard.mjs";
 import * as eggWild from "./eggwild.mjs";
 import * as eggWood from "./eggwood.mjs";
@@ -109,8 +112,8 @@ const DRAWERS = {
   snowpole: road.snowpole, hydrant: street.hydrant, busstop: street.busstop,
   bench: street.bench, floodlight: street.floodlight, billboard: street.billboard,
   neonsign: street.neonsign, gantry: street.gantry, pipe: street.pipe,
-  kiosk: build.kiosk, barn: build.barn, windmill: build.windmill,
-  watertower: build.watertower, derrick: build.derrick, lighthouse: build.lighthouse,
+  kiosk: build.kiosk, barn: build.barn, lighthouse: build.lighthouse,
+  windmill: steel.windmill, watertower: steel.watertower, derrick: steel.derrick,
   rangerhut: yard.rangerhut, lodge: yard.lodge, silo: yard.silo,
   container: yard.container, barrel: yard.barrel,
   // 彩蛋：一条路一件，见各条赛道的 `scenery` 权重（都很小，所以是"偶尔遇上"）

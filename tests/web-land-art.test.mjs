@@ -17,6 +17,7 @@ import assert from "node:assert/strict";
 import { MODES } from "../sim/maps.mjs";
 import { GROUNDS, tonesOf } from "../web/js/grounds.mjs";
 import { SEA, hasWear, seaBand } from "../web/js/roadwear.mjs";
+import { fieldDetail, hasField } from "../web/js/fieldwear.mjs";
 import { BY_MODE, PALETTES } from "../web/js/skies.mjs";
 import { backdrop, skyIds, skyOf } from "../web/js/sky.mjs";
 import { withDom } from "./helpers/dom.mjs";
@@ -126,6 +127,61 @@ test("海只铺在岸线右边；近处那几片整片跳过，不许横跨画�
   const dry = spyCtx();
   seaBand(dry.ctx, "desert", geom(slice(22, 690), slice(26, 700)), W);
   assert.equal(dry.ops.length, 0);
+});
+
+/**
+ * 路**再往外**那一片地（`fieldwear.mjs`）。
+ *
+ * 这一层的存在理由就是"路肩之外那一整幅纯色"：相机往前开，它纹丝不动，速度感
+ * 直接掉一半。所以这里钉三件事——八条路都得有东西、纹路必须钉在**世界坐标**上
+ * （钉在"第几片"上就会跟着相机抖）、以及每片的画布调用要有上限。
+ */
+test("八条路，路外那一片地都得长出东西来", () => {
+  for (const id of Object.keys(GROUNDS)) {
+    assert.equal(hasField(id), true, `${id} 的路外是一片纯色——那条路会显得空且不动`);
+  }
+  assert.equal(hasField("nope"), false);
+});
+
+/** 一片的几何：路缘石外沿在 x=600 / x=800 附近，比例尺 24~34 像素每米。 */
+const fieldGeom = z => ({
+  far: { x: 700, hw: 100, rumble: 10, ppm: 24, y: 400 },
+  near: { x: 706, hw: 120, rumble: 12, ppm: 34, y: 620 },
+  yF: 380, yN: 620, z,
+});
+
+test("路外那片地：八种地面都画得出来、配平、没有 NaN", () => {
+  for (const id of Object.keys(GROUNDS)) {
+    const { ctx, ops, invalid } = spyCtx();
+    fieldDetail(ctx, id, fieldGeom(600));
+    assertBalanced(ops, `${id} 的路外`);
+    assertSane(ops, invalid, `${id} 的路外`);
+    assert.ok(ops.length > 0, `${id} 的路外一笔都没画`);
+    // 上限是防呆，数的**不是路径点而是真正的绘制**：这一层每帧要在七十多片 × 两侧
+    // 上各跑一遍，一片多十次 `fill` 就是每帧多一千五百次画布调用。
+    const paints = ops.filter(o => o[0] === "fill" || o[0] === "stroke" || o[0] === "fillRect").length;
+    assert.ok(paints <= 14, `${id} 一片路外画了 ${paints} 次，太贵了`);
+  }
+});
+
+test("路外的纹路钉在世界坐标上：同一段路画两遍逐笔一致，换一段就换样子", () => {
+  const paint = z => {
+    const { ctx, ops } = spyCtx();
+    fieldDetail(ctx, "open", fieldGeom(z));
+    return fingerprint(ops);
+  };
+  assert.equal(paint(600), paint(600), "同一个 z 画两遍不一样——纹路会跟着相机抖");
+  assert.notEqual(paint(600), paint(1200), "走了六百米，路外一丝没变");
+});
+
+test("贴到镜头前也不爆：比例尺大到离谱时不出现 NaN 或无穷像素", () => {
+  const near = { far: { x: 700, hw: 900, rumble: 90, ppm: 240, y: 400 }, near: { x: 710, hw: 1400, rumble: 140, ppm: 380, y: 900 }, yF: 380, yN: 900, z: 604 };
+  for (const id of Object.keys(GROUNDS)) {
+    const { ctx, ops, invalid } = spyCtx();
+    fieldDetail(ctx, id, near);
+    assertBalanced(ops, `${id} 贴脸的路外`);
+    assertSane(ops, invalid, `${id} 贴脸的路外`);
+  }
 });
 
 test("拿模式 id 或地面 id 都能取到配色，不认识的名字退回城市", () => {
