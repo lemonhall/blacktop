@@ -74,12 +74,22 @@ function drawSkid(ctx, cam, tbl) {
   ctx.globalAlpha = 1;
 }
 
-/** 粒子与跳字：在"世界的空气里"，所以画在所有立体物之后。 */
-function drawFx(ctx, cam, tbl) {
+/**
+ * 粒子与跳字：在"世界的空气里"，所以画在所有立体物之后。
+ *
+ * **粒子的 `y` 是"离地多高"，而 `project` 要的是"世界多高"**（车、道具、骑手
+ * 传进去的都是 `hillAt(z) + 离地`）。少了这一步换算，粒子就是拿"离地 0.1 米"
+ * 去减"相机的世界高度"：在洼地里（`hillAt` 为负）这一减是正的，于是自己后轮
+ * 扬起的土会一路飘到天上，变成几枚横在天上的大圆饼——远看像镜头光斑，其实
+ * 是扬尘。上坡时错在另一头：土沉到路面以下，白撒。
+ */
+const worldY = (z, y) => S.track.hillAt(z) + y;
+
+export function drawFx(ctx, cam, tbl) {
   const W = cam.W, H = cam.H;
   // 冲击环画在粒子**之前**：它在空气里是最大的一圈，压在它后面的火花才看得见。
   for (const r of FX.rings) {
-    const q = project(cam, tbl, r.x, r.y, r.z);
+    const q = project(cam, tbl, r.x, worldY(r.z, r.y), r.z);
     if (!q || q.ppm < 0.2) continue;
     const p = r.t / r.max;
     const rad = (0.7 + p * 7.5) * r.k * q.ppm * 0.5;
@@ -91,7 +101,7 @@ function drawFx(ctx, cam, tbl) {
     ctx.stroke();
   }
   for (const p of FX.smoke) {
-    const q = project(cam, tbl, p.x, p.y, p.z);
+    const q = project(cam, tbl, p.x, worldY(p.z, p.y), p.z);
     // 屏幕外的不画：撞车那一瞬间，烟和火星子会往两侧甩出去几十团，其中一大半
     // 落在画面左右之外。以前它们照样要各画一笔——`project` 算了、`arc` 也发了，
     // 只是最后没落在屏幕上。
@@ -103,7 +113,7 @@ function drawFx(ctx, cam, tbl) {
     ctx.fill();
   }
   for (const p of FX.sparks) {
-    const q = project(cam, tbl, p.x, p.y, p.z);
+    const q = project(cam, tbl, p.x, worldY(p.z, p.y), p.z);
     if (!q || q.ppm < 0.25 || q.sx < -30 || q.sx > W + 30 || q.sy < -30 || q.sy > H + 30) continue;
     ctx.globalAlpha = Math.max(0, p.life / p.max);
     ctx.fillStyle = p.color;
@@ -111,7 +121,7 @@ function drawFx(ctx, cam, tbl) {
   }
   ctx.globalAlpha = 1;
   for (const f of FX.floaters) {
-    const q = project(cam, tbl, f.x, f.y, f.z);
+    const q = project(cam, tbl, f.x, worldY(f.z, f.y), f.z);
     if (!q || q.ppm < 0.4) continue;
     ctx.globalAlpha = Math.max(0, f.life / f.max);
     // 字号按距离长，但**必须封顶**：跳字是挂在"那一件东西"上的，而它常常就贴在
@@ -248,3 +258,4 @@ function drawRacerSprite(ctx, cam, tbl, r, view) {
       Math.min(15, 0.55 * p.ppm + 8));
   }
 }
+
