@@ -189,6 +189,7 @@ $env:SMOKE_BASE='https://blacktop-api.lemonhall.me'; npm run smoke   # 部署完
 | [docs/architecture.md](docs/architecture.md) | 架构师 | 前端做什么、后端做什么、边界为什么划在那里、多租户与时间模型 |
 | [docs/flow.md](docs/flow.md) | 架构师 / 集成方 | **一局比赛打了哪些请求**，每条请求长什么样、解决什么问题 |
 | [docs/protocol.md](docs/protocol.md) | 实现者 | 线协议字段表、三条不变式、改协议的三条规矩 |
+| [docs/feel.md](docs/feel.md) | 改手感的人 | **为什么拳头打得上**：时间账、判定窗、冷却缓冲、机器人追赶、怎么复测 |
 | [docs/shots/](docs/shots/) | 所有人 | 界面截图与"怎么重新出这批图" |
 
 ## 代码结构
