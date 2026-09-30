@@ -206,23 +206,60 @@ export function drawBuilding(ctx, { sx, baseY, s, seed, width, height, tone, haz
   //    夜市挂霓虹竖招、工业区贴着成排的管道、海崖上每层一个阳台。
   if (fine && h > 60) {
     if (ground === "neon" || ground === "city") {
-      // 竖招：一块从上往下挂的长条，管光沿着边缘走
-      const cx2 = sx + w * (hash2(seed, 33) < 0.5 ? -0.42 : 0.42);
-      const signH = h * 0.34, signW = Math.max(3, s * 1.4), sy2 = top + h * 0.2;
+      // 竖招：一只**从墙上挑出去**的灯箱。上下两根托架把它挂在半空，箱面是点亮的
+      // 亚克力（上暗下更暗，中间一条亮），四边走一圈灯管，面上打两三个方块字。
+      //
+      // 上一版只有"一个空盒子 + 四条横杠"：近处看像挂在楼边的电梯井——既没有
+      // 托架（看不出它凭什么挂在半空），四条等距横杠也不像字。现在每个字是
+      // **一个小方块 + 两三道笔画**，不依赖字体，八像素宽也读得出"这是一排字"。
+      const side = hash2(seed, 33) < 0.5 ? -1 : 1;
+      const bW = Math.max(3.5, s * 1.5);
+      const bH = Math.max(6, h * 0.3);
+      const wallX = sx + side * w * 0.46;
+      const bx = sx + side * (w * 0.5 + bW * 0.62);
+      const bL = bx - bW / 2, bT = top + h * 0.18;
       const glow = ["#ff5fd0", "#5fe0ff", "#ffd23f"][seed % 3];
-      ctx.fillStyle = "rgba(10,8,16,.9)";
-      ctx.fillRect(cx2 - signW / 2, sy2, signW, signH);
-      ctx.globalAlpha = 0.7;
-      ctx.fillStyle = glow;
-      ctx.fillRect(cx2 - signW / 2, sy2, Math.max(1, s * 0.1), signH);
-      ctx.fillRect(cx2 + signW / 2 - Math.max(1, s * 0.1), sy2, Math.max(1, s * 0.1), signH);
-      ctx.fillRect(cx2 - signW / 2, sy2, signW, Math.max(1, s * 0.1));
-      ctx.fillRect(cx2 - signW / 2, sy2 + signH - Math.max(1, s * 0.1), signW, Math.max(1, s * 0.1));
+      // 托架：两根横臂，朝墙的那头压在墙面上
+      ctx.fillStyle = "rgba(26,30,40,.92)";
+      for (const f of [0.14, 0.86]) {
+        ctx.fillRect(Math.min(wallX, bx), bT + bH * f - Math.max(1, s * 0.07),
+          Math.abs(bx - wallX), Math.max(1.4, s * 0.14));
+      }
+      // 箱体：一圈墨边，再压箱面
+      ctx.fillStyle = "rgba(6,8,14,.95)";
+      ctx.fillRect(bL - s * 0.08, bT - s * 0.08, bW + s * 0.16, bH + s * 0.16);
+      ctx.fillStyle = vgrad(ctx, bx, bT, bT + bH, [
+        [0, hz(shade(glow, -0.5))], [0.42, hz(shade(glow, -0.68))], [1, hz(shade(glow, -0.86))],
+      ]);
+      ctx.fillRect(bL, bT, bW, bH);
+      // 点亮的亚克力：中间那一条最亮
+      ctx.fillStyle = hgrad(ctx, bL, bL + bW, bT + bH / 2, [
+        [0, "rgba(255,255,255,.08)"], [0.5, "rgba(255,255,255,.24)"], [1, "rgba(255,255,255,.05)"],
+      ]);
+      ctx.fillRect(bL, bT, bW, bH);
+      // 灯管：四边一圈，画在箱体外面，看着像贴在箱边上
+      const tube = Math.max(1, s * 0.09);
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = hz(glow);
+      ctx.fillRect(bL - tube, bT - tube, bW + tube * 2, tube);
+      ctx.fillRect(bL - tube, bT + bH, bW + tube * 2, tube);
+      ctx.fillRect(bL - tube, bT, tube, bH);
+      ctx.fillRect(bL + bW, bT, tube, bH);
       ctx.globalAlpha = 1;
-      for (let i = 0; i < 4; i++) {
-        ctx.fillStyle = i % 2 ? glow : "#f2ecff";
-        ctx.fillRect(cx2 - signW * 0.26, sy2 + signH * (0.12 + i * 0.2),
-          signW * 0.52, Math.max(1, s * 0.28));
+      // 字：竖排，每个字一个小方块 + 笔画
+      const n2 = bH > bW * 2.6 ? 3 : 2;
+      const gw = bW * 0.54, gh2 = Math.min(gw, bH / (n2 + 0.7));
+      const ink2 = Math.max(1, gh2 * 0.13);
+      for (let i = 0; i < n2; i++) {
+        const gx = bx - gw / 2;
+        const gy = bT + bH * ((i + 0.5) / n2) - gh2 / 2;
+        ctx.fillStyle = i % 2 ? "#f6f0ff" : hz(shade(glow, 0.25));
+        ctx.fillRect(gx, gy, gw, ink2);                                   // 上横
+        ctx.fillRect(gx + gw * 0.44, gy, ink2, gh2);                      // 中竖
+        if (gh2 > s * 0.45) {
+          ctx.fillRect(gx, gy + gh2 * 0.46, gw, ink2);                    // 中横
+          ctx.fillRect(gx, gy + gh2 - ink2, gw, ink2);                    // 下横
+        }
       }
     } else if (ground === "works") {
       // 成排的管道：三根沿着墙面横着走，每隔一段一个卡箍
