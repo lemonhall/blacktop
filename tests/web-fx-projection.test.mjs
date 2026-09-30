@@ -42,12 +42,14 @@ const KINDS = {
   烟: [
     () => FX.smoke.push({ ...near, vx: 0, vz: 0, vy: 0, life: 0.5, max: 0.68,
       size: 0.22, color: "rgba(198,178,138,.34)" }),
-    ops => { const o = ops.find(o => o[0] === "arc"); return o && o[1][1]; },
+    // 烟是一张贴图（软边），落点写在 `drawImage(贴图, x-r, y-r, 2r, 2r)` 里。
+    ops => { const o = ops.find(o => o[0] === "drawImage"); return o && o[1][2] + o[1][4] / 2; },
   ],
   火星: [
     () => FX.sparks.push({ ...near, vx: 0, vz: 0, vy: 0, life: 0.4, max: 0.5,
       size: 0.1, color: "#ffd24a" }),
-    ops => { const o = ops.find(o => o[0] === "fillRect"); return o && o[1][1] + o[1][3] / 2; },
+    // 火星子是一道划：`moveTo` 的落点是粒子的头，尾巴在 `lineTo` 上。
+    ops => { const o = ops.find(o => o[0] === "moveTo"); return o && o[1][1]; },
   ],
   冲击环: [
     () => FX.rings.push({ ...near, k: 1, color: "rgba(255,236,190,", t: 0, max: 0.6 }),

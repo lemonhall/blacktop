@@ -19,6 +19,7 @@ import { WEAPONS } from "../../sim/weapons.mjs";
 import { drawPickup } from "./weaponsart.mjs";
 import { CRITTERS } from "../../sim/critters.mjs";
 import { drawOverlays } from "./overlays.mjs";
+import { drawPuff, drawSpark, variantOf } from "./particles.mjs";
 
 /**
  * 跳字的字号：**按距离长，但封顶**。
@@ -106,18 +107,14 @@ export function drawFx(ctx, cam, tbl) {
     // 落在画面左右之外。以前它们照样要各画一笔——`project` 算了、`arc` 也发了，
     // 只是最后没落在屏幕上。
     if (!q || q.ppm < 0.25 || q.sx < -30 || q.sx > W + 30 || q.sy < -30 || q.sy > H + 30) continue;
-    ctx.globalAlpha = Math.max(0, p.life / p.max) * 0.75;
-    ctx.fillStyle = p.color;
-    ctx.beginPath();
-    ctx.arc(q.sx, q.sy, Math.max(1, p.size * q.ppm), 0, Math.PI * 2);
-    ctx.fill();
+    // 一团烟是**软边贴图**，不是一枚实心圆：好几团叠在一起时，圆片会变成一碗看得见
+    // 圈数的肥皂泡。画法见 `particles.mjs`。
+    drawPuff(ctx, q.sx, q.sy, Math.max(1, p.size * q.ppm), p.color,
+      Math.max(0, p.life / p.max) * 0.75, variantOf(p));
   }
   for (const p of FX.sparks) {
-    const q = project(cam, tbl, p.x, worldY(p.z, p.y), p.z);
-    if (!q || q.ppm < 0.25 || q.sx < -30 || q.sx > W + 30 || q.sy < -30 || q.sy > H + 30) continue;
-    ctx.globalAlpha = Math.max(0, p.life / p.max);
-    ctx.fillStyle = p.color;
-    ctx.fillRect(q.sx - p.size * q.ppm, q.sy - p.size * q.ppm, p.size * q.ppm * 2, p.size * q.ppm * 2);
+    // 火星子是**一道往回拖的短划**（见 `particles.mjs`），不是屏幕上的小方块。
+    drawSpark(ctx, cam, tbl, S.track.hillAt, p);
   }
   ctx.globalAlpha = 1;
   for (const f of FX.floaters) {
