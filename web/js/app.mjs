@@ -42,7 +42,7 @@ const state = { last: 0, acc: 0, screen: "rooms" };
 function frame(now) {
   const delta = Math.min((now - state.last) / 1000, 0.25) || 0;
   state.last = now;
-  if (state.screen !== S.screen) { state.acc = 0; state.screen = S.screen; }
+  if (state.screen !== S.screen) { state.acc = 0; S.tickAcc = 0; state.screen = S.screen; }
   // 候场与大厅都要那块展示台：既让页面不空，也让人开跑之前先看清自己骑什么。
   if (S.screen === "rooms" || S.screen === "staging") renderShowcase(now / 1000);
   if (S.screen === "play" || S.screen === "over") tickArena(delta, now);
@@ -77,6 +77,9 @@ function tickArena(delta, now) {
       stepPredict(S, DT, controls, act);
       noteTick(cmd);
     }
+    // 攒着还没走的那一小段时间，交给画面去补半个格子（见 `view.mjs` 的
+    // `subTickSeconds`）。它必须留在这里：预测只走整格，台阶得由渲染层抹平。
+    S.tickAcc = state.acc;
     // 世界是被消息驱动的：就算这一帧一格都没走（倒数中、或者人还躺在地上），
     // 也必须让上行流活着——否则倒数永远走不完，结算只能靠 alarm 兜底。
     if (S.screen === "play") flushCmd(now);

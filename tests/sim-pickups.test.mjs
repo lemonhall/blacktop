@@ -38,14 +38,15 @@ function duel(dx = 0.5, dz = 2.0) {
 
 const belt = r => r.belt.map(x => WEAPONS[x.i].id);
 
-test("开局摆阵：沿路撒六件、一部分机器人自带家伙，同种子逐位一致", () => {
+test("开局摆阵：每圈沿路撒六件、一部分机器人自带家伙，同种子逐位一致", () => {
   const one = build({ seed: 42, bots: 13 });
   const two = build({ seed: 42, bots: 13 });
   const other = build({ seed: 43, bots: 13 });
-  assert.equal(one.pickups.length, 6, "沿路撒的存货");
+  // 三圈就撒十八件：中间那两圈的路上不能光秃秃的（见 `pickups.armTheField`）。
+  assert.equal(one.pickups.length, 6 * one.track.laps, "沿路撒的存货");
   for (const p of one.pickups) {
     assert.ok(p.i > 0, "地上躺的必须是一件真家伙，不能是空手");
-    assert.ok(p.z > 600 && p.z < one.track.length, "存货落在赛道上，不能撒在起点或终点外");
+    assert.ok(p.z > 600 && p.z < one.track.totalLength, "存货落在赛道上，不能撒在起点或终点外");
   }
   const armed = one.racers.filter(r => r.belt.length).length;
   assert.ok(armed > 0, "一个自带家伙的都没有，前半程就没东西可抢了");
@@ -150,12 +151,15 @@ test("没记忆：落到所有人身后、或者躺太久的，自己消失", ()
   assert.equal(w.pickups.length, 0, "躺够久也回收：不维护账本");
 });
 
-test("上限：地上最多同时躺十四件，超了丢最老的", () => {
+test("上限：地上一圈最多同时躺十四件，超了丢最老的", () => {
   const w = solo(19);
-  for (let i = 0; i < MAX_PICKUPS + 3; i++) {
+  // 上限**按圈数放大**（三圈 = 三倍），否则开局撒的三圈货会把第一圈那几件直接挤掉。
+  const cap = w.maxPickups || MAX_PICKUPS;
+  assert.equal(cap, MAX_PICKUPS * w.track.laps, "上限没有跟着圈数放大");
+  for (let i = 0; i < cap + 3; i++) {
     placePickup(w, freshItem(weaponIndex("club")), 0, 100 + i);
   }
-  assert.equal(w.pickups.length, MAX_PICKUPS);
+  assert.equal(w.pickups.length, cap);
   assert.equal(w.pickups[0].z, 103, "丢掉的是最早那三件");
 });
 

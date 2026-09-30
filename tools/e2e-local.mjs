@@ -193,6 +193,10 @@ async function main() {
     steps.push(["HUD 有名次榜、计时与播报位（不是一块空画布）",
       hud.ranks.length > 0 && hud.hudTimer !== "00:00",
       `名次「${hud.ranks.slice(0, 40)}」· 计时 ${hud.hudTimer} · 与头名 ${hud.hudGap}`]);
+    // 一局跑三圈，玩家得看得见自己在第几圈——不然"还剩两圈"只能靠猜。
+    steps.push(["HUD 上写着第几圈（三圈的局不写出来就是黑箱）",
+      /第 \d\/\d 圈/u.test(hud.hudLap),
+      `计时牌上写着「${hud.hudLap}」`]);
     // 仪表舱压在画面下缘，而相机是追尾视角——它每高一点，挡掉的就是眼前那条路
     // （线上原话："占用了太多高度，很恶心，挡住了"）。所以这条不钉像素值，钉它
     // 占了几成屏高、上沿落在第几行；换个窗口大小也照样成立。
@@ -254,9 +258,11 @@ async function main() {
     const over = await until(async () => {
       const a = await observe(host);
       return a.screen === "over" ? a : null;
-    }, { what: "比赛结束，进入结算页", timeout: 260000, every: 1500 }).catch(() => null);
+      // 一局是**三圈**（三倍里程），真人一路油门到底也要跑四分钟上下，所以窗口开得比
+      // 单程时代宽三倍——这条等不到，八成是"路没接上"或者车被钉在某处，不是等得不够久。
+    }, { what: "比赛结束，进入结算页", timeout: 900000, every: 1500 }).catch(() => null);
     steps.push(["跑完全程，服务端判完名次并广播结算", !!over && over.resultTable.length > 0,
-      over ? `${over.resultRank} · ${over.resultTable.slice(0, 80)}` : "260 秒内没跑到结算"]);
+      over ? `${over.resultRank} · ${over.resultTable.slice(0, 80)}` : "900 秒内没跑到结算"]);
     await lateContext.close();
   } finally {
     await browser.close();

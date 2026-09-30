@@ -25,6 +25,16 @@ export function consumeEvents(events, view) {
       case "nitro":
         play("nitro");
         break;
+      // 过一圈线。三圈的比赛里这是唯一的"里程碑"——所以自己过线要正儿八经报一次，
+      // 别人过线只在播报条上留一行：十五台车一起跑，谁在第几圈是看得见的信息。
+      case "lap":
+        feed(`${nameOf(view, ev.a)} 跑进第 ${ev.l} 圈`, "#9fd0ff");
+        if (ev.a === mine && ev.l < ev.n) {
+          play("lap");
+          announce(`第 ${ev.l} 圈`, `还剩 ${ev.n - ev.l} 圈`, "#9fd0ff");
+          floater(ev.x, ev.z, 3.1, `第 ${ev.l} 圈`, "#bfe4ff", true);
+        }
+        break;
       case "hit":
         burst(ev.x, ev.z, 1.1, "#ffd23f", 12, 16, 0.16);
         burst(ev.x, ev.z, 1.1, "#ff6a5a", 6, 10, 0.12);
@@ -36,8 +46,16 @@ export function consumeEvents(events, view) {
           impact(0.34, "255,90,78", 0.48);
         }
         break;
+      // 挥空。**只给我自己回音**：十五台车每次抡空都要飘一行字，画面就成弹幕了。
+      //
+      // 这一条是补上来的：以前挥空只有一声轻响，玩家分不清"我打空了"和"我压根没
+      // 打出去"——线上实测的攻击手感差，一半差在这里。MISS 摆在拳头够到的那一截
+      // 路上（前打摆身前、回身摆身后），于是"打得着但没打中"和"方向按反了"
+      // 一眼就能分开。
       case "whiff":
-        if (ev.a === mine) play("whiff");
+        if (ev.a !== mine) break;
+        play("whiff");
+        floater(ev.x, ev.z + (ev.dir > 0 ? 1.4 : -1.1), 1.85, "MISS", "#c8d3e6");
         break;
       // 捡起一件：只有"是我捡的"才值得报——别人捡东西的消息十五台车会刷屏。
       case "pick":

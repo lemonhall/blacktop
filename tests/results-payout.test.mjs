@@ -31,12 +31,12 @@ test("查不到就是 0，不抛异常（结算页不该因为一个人没数据
 test("真跑完一局：冠军拿的是名次底薪，不是 0", () => {
   // 让人一直拧着油门跑到底（bot 会自动跑），然后看权威结算。
   const w = build({ bots: 3, humans: [{ ownerId: "g_alice", name: "柠檬叔" }] });
-  run(w, seconds(200), world => {
+  run(w, seconds(w.timeLimit), world => {
     world.racers.forEach(r => {
       if (r.kind === "human" && r.state === "ride") r.v = Math.min(r.v + 1, 60);
     });
   });
-  assert.ok(w.results, "200 秒内应当已经结算");
+  assert.ok(w.results, "计时上限之内应当已经结算");
   const rows = w.results.players;
   const first = rows.find(p => p.rank === 1);
   assert.ok(first, "结算里必须有第一名");

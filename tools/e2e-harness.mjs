@@ -96,6 +96,7 @@ export const observe = page => page.evaluate(async () => {
     feed: text("feedList").replace(/\s+/gu, " ").slice(0, 200),
     ranks: text("rankList").replace(/\s+/gu, " ").slice(0, 200),
     hudTimer: text("hudTimer"),
+    hudLap: text("hudLap"),
     hudGap: text("hudGap"),
     resultRank: text("resultRank"),
     resultTable: text("resultTable").replace(/\s+/gu, " ").slice(0, 240),

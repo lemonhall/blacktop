@@ -21,6 +21,7 @@ import { grainOverlay } from "./grain.mjs";
 import { tonesOf } from "./grounds.mjs";
 import { seaBand, shoulderDetail, tyreTracks } from "./roadwear.mjs";
 import { fieldDetail } from "./fieldwear.mjs";
+import { drawLapLines } from "./finishline.mjs";
 
 /** 焦距 = 画面高度 × 这个数。1.25 对应约 70° 的水平视野，是追尾视角的舒适区。 */
 const PROJ = 1.25;
@@ -254,7 +255,8 @@ export function drawRoad(ctx, cam, tbl, S) {
     ctx.fillStyle = refl;
     ctx.fillRect(0, cam.horizon, W, cam.H * 0.3);
   }
-  finishBanner(ctx, cam, tbl, S);
+  // 圈线与终点横幅：投影函数由这里交出去，那一层于是不必反过来 import 这个文件。
+  drawLapLines(ctx, cam, tbl, S, { bendAt, hillAt });
   // 雾：远处融进天色，也让"路的尽头"不显得像一堵墙
   const fog = ctx.createLinearGradient(0, cam.horizon - 6, 0, cam.horizon + cam.H * 0.34);
   fog.addColorStop(0, tone.fog);
@@ -277,21 +279,3 @@ function sliceAt(cam, tbl, i, halfWidth) {
   };
 }
 
-/** 终点横幅：格子旗拉在路面上方，是"这一局快结束了"最直观的信号。 */
-function finishBanner(ctx, cam, tbl, S) {
-  const z = S.track.length;
-  const relZ = z - cam.camZ;
-  if (relZ < 4 || relZ > 420) return;
-  const ppm = cam.F / relZ;
-  const x = cam.W / 2 - ppm * (cam.camX + bendAt(tbl, z));
-  const y = cam.horizon - ppm * (S.track.hillAt(z) - cam.camY);
-  const hw = S.track.halfWidth * ppm;
-  const cell = Math.max(3, (hw * 2) / 16);
-  for (let i = 0; i < 16; i++) {
-    ctx.fillStyle = i % 2 ? "#f4f7ff" : "#151922";
-    ctx.fillRect(x - hw + i * cell, y - 0.5 * ppm, cell, 0.9 * ppm);
-  }
-  ctx.fillStyle = "#f4f7ff";
-  ctx.fillRect(x - hw, y - 2.6 * ppm, hw * 2, 0.16 * ppm);
-  ctx.fillRect(x - hw, y - 0.9 * ppm, hw * 2, 0.16 * ppm);
-}

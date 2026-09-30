@@ -7,6 +7,10 @@
  *
  * 方向键与 WASD **同时生效**，不是二选一：`THROTTLE` 这样的表里把两种键都列上，
  * 谁按哪个都算数。攻击按原版的路子分前后两个方向（不是两套招式）——详见 `sim/racer.mjs`。
+ *
+ * **鼠标左键也打**（见 `bindMouse`）：现代玩家的手就搭在鼠标上，而出拳是这条路上
+ * 最吃操作的一下。三种输入（键盘 / 触屏 / 鼠标）走的是**同一条**通道 —— 都归到那个
+ * 位掩码上，所以判定、冷却、预测、上行报文一个都不用改，也不可能走出三套手感。
  */
 
 const LEFT = ["KeyA", "ArrowLeft"];
@@ -48,6 +52,9 @@ function want(S, act) {
 
 /** 每帧一次：冷却一结束就把记着的那一拳兑现掉。 */
 export function pumpActions(S, now = performance.now()) {
+  // 鼠标按着不放 = 一直挥拳。键盘那边靠操作系统的按键重复，鼠标没有这回事，
+  // 得自己来——不然"按住左键"和"按住 J"会变成两种手感。
+  if (S.mouseHold) want(S, 1);
   const wait = S.actWait;
   if (!wait) return;
   const cd = S.predictMe ? S.predictMe.attackCd : 0;
@@ -71,9 +78,38 @@ export function attachInput(S, { onPunch, onNitro } = {}) {
   document.addEventListener("keyup", event => S.keys.delete(event.code));
   window.addEventListener("blur", () => clearInputs(S));
   document.addEventListener("visibilitychange", () => { if (document.hidden) clearInputs(S); });
+  bindMouse(S, onPunch);
+}
+
+/**
+ * 鼠标左键 = **正前方一拳**。
+ *
+ * 三个门槛缺一不可，少一个就会变成"点什么都出拳"的骚扰：
+ *   1. **只在赛道上**：大厅、候场、结算页上的每一次点击都是在点界面；
+ *   2. **只认左键**：右键要留给浏览器的上下文菜单；
+ *   3. **落在控件上不算**：暂停、帮助、音量这些按钮本身还得能点。
+ *
+ * 暂停/帮助那层遮罩也挡住出拳——那会儿画面是停的，一拳打出去就是"我明明没在看比赛"。
+ * 松开左键（或者窗口失焦、切到后台）就把 `mouseHold` 熄掉，见 `clearInputs`。
+ */
+function bindMouse(S, onPunch) {
+  document.addEventListener("mousedown", event => {
+    if (event.button !== 0 || S.screen !== "play") return;
+    const backdrop = document.getElementById("modalBackdrop");
+    if (backdrop && !backdrop.classList.contains("hidden")) return;
+    const hit = event.target;
+    if (hit && hit.closest && hit.closest("button, a, input, select, .touch")) return;
+    // 不拦一下，按下拖动会顺手把界面上的字选蓝——赛车游戏里这尤其难看。
+    event.preventDefault();
+    S.mouseHold = true;
+    want(S, 1);
+    onPunch?.();
+  });
+  document.addEventListener("mouseup", () => { S.mouseHold = false; });
 }
 
 export function clearInputs(S) {
+  S.mouseHold = false;
   S.keys.clear();
   S.actions = 0;
   S.actWait = null;

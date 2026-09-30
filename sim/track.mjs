@@ -21,6 +21,12 @@ import { MODES } from "./data.mjs";
 const PROP_STEP = 26;
 
 /**
+ * 一圈跑完就结束太短了——一局默认**三圈**。想在 `MODES` 里给某条赛道单独改，
+ * 写一个 `laps` 就盖掉了。
+ */
+const DEFAULT_LAPS = 3;
+
+/**
  * 权重表 → 前缀和。**一次算好，用几百次**：`propsBetween` 每帧要取几十个道具，
  * 每个道具都去累加一遍权重是白花的；而这张表在一局里根本不会变。
  *
@@ -67,11 +73,26 @@ function minGapOf(table, total, kind) {
 
 export function createTrack({ seed = 1, mode = "city" } = {}) {
   const cfg = MODES[mode] || MODES.city;
+  // `length` 是**一圈**的长度；一场比赛跑 `laps` 圈，终点在 `totalLength`。
+  const length = cfg.length;
+  const laps = Math.max(1, Math.round(cfg.laps || DEFAULT_LAPS));
   // 四个相位分别给：两个曲率分量、两个坡度分量。相位由种子决定，形状就每局不同。
   const ph = [0, 1, 2, 3].map(i => hash2(seed, i + 1) * TAU);
   const halfWidth = cfg.lanes * LANE_W / 2;
   const hillL = cfg.lanes === 2 ? 260 : 340;
   const propStep = cfg.propStep || PROP_STEP;
+  /*
+   * **一条圈，得能接上自己。**
+   *
+   * 弯和坡本来是一对正弦，波长按"多少米一个周期"给（`z / 240` 那种写法）。现在把
+   * 每条正弦的波长掐成一圈长度的整数分之一（N = 一圈长度 ÷ 原周期，四舍五入），
+   * 于是 `curveAt(0)` 与 `curveAt(length)` 严格相等、导数也相等——车开到圈末，
+   * 路正好卷回起点，既没有接缝，也不用"过了终点线就换一条路"。
+   *
+   * 代价是波长最多偏个一两成（3600 米的城市环路上，240 那条从 1508 米变成 1800
+   * 米）。同族的形状、略微舒展一点的弯，比一条接不上的路便宜得多。
+   */
+  const wave = radius => Math.max(1, Math.round(length / (radius * TAU)));
   const sceneryTable = cfg.scenery || { tree: 1 };
   const scenery = prefix(sceneryTable);
   const gaps = {};
@@ -84,9 +105,11 @@ export function createTrack({ seed = 1, mode = "city" } = {}) {
    *
    * 这条"扫一遍"是所有"不许连着出现"规则的前提，也正因为要扫，它只能建一次。
    * 两百多个格子（最长 4600 米 ÷ 17 米）算一遍是微秒级的，比每帧回头猜便宜得多。
-   * 多留 900 米：终点之后相机还在往后看，那时候路边不能突然秃掉。
+   * 表只盖**一圈**：第二圈的路边就是第一圈的复制（`propsBetween` 按圈取模），
+   * 所以"过了终点之后路边秃掉"这件事压根不存在——那边是下一圈的起点。
    */
-  const slots = new Array(Math.ceil((cfg.length + 900) / propStep) + 1);
+  const perLap = Math.max(1, Math.ceil(length / propStep));
+  const slots = new Array(perLap);
   const lastAt = new Map();
   const blocked = new Set();
   for (let i = 0; i < slots.length; i++) {
@@ -104,8 +127,15 @@ export function createTrack({ seed = 1, mode = "city" } = {}) {
     lastAt.set(kind, i);
     slots[i] = kind;
   }
+  // 接缝也归"不许连着出现"管：最后一槽是水塔，第一槽不该又来一座；反过来，
+  // 第一槽也不该和第二槽撞上。两头都得挡住——只挡一头就只是把冲突挪了个位置。
+  if (perLap > 2) {
+    const near = new Set([slots[perLap - 1], slots[1]]);
+    const alt = near.has(slots[0]) ? prefix(sceneryTable, near) : null;
+    if (alt) slots[0] = pickPrefix(alt, hash2(seed + 47, 0));
+  }
   return {
-    seed, mode, lanes: cfg.lanes, length: cfg.length,
+    seed, mode, lanes: cfg.lanes, length, laps, totalLength: length * laps,
     halfWidth, shoulder: SHOULDER_W,
     /** 整条路（含两侧路肩）的横向半宽——车的 |x| 不会超过它。 */
     limitX: halfWidth + SHOULDER_W - 0.6,
@@ -119,10 +149,12 @@ export function createTrack({ seed = 1, mode = "city" } = {}) {
     sceneryKinds: Object.keys(cfg.scenery || { tree: 1 }),
     propStep,
 
-    /** 曲率 κ(z)，单位 1/米。正数往左拐。 */
-    curveAt: z => cfg.curveA * Math.sin(z / 240 + ph[0]) + cfg.curveB * Math.sin(z / 720 + ph[1]),
-    /** 路面高程（米）。只影响画面起伏，不影响速度。 */
-    hillAt: z => cfg.hillA * Math.sin(z / hillL + ph[2]) + cfg.hillB * Math.sin(z / (hillL * 0.42) + ph[3]),
+    /** 曲率 κ(z)，单位 1/米。正数往左拐。整圈周期，`z` 可以一直往大里走。 */
+    curveAt: z => cfg.curveA * Math.sin(TAU * wave(240) * z / length + ph[0])
+      + cfg.curveB * Math.sin(TAU * wave(720) * z / length + ph[1]),
+    /** 路面高程（米）。只影响画面起伏，不影响速度。同样整圈周期。 */
+    hillAt: z => cfg.hillA * Math.sin(TAU * wave(hillL) * z / length + ph[2])
+      + cfg.hillB * Math.sin(TAU * wave(hillL * 0.42) * z / length + ph[3]),
     /** 第 i 条车道的中心线（从最左算起，0 是最左那条）。 */
     laneX: i => (i - (cfg.lanes - 1) / 2) * LANE_W,
     /** 右侧车道（和我们同向）的索引区间；左侧的就是对向。靠右行驶。 */
@@ -141,15 +173,17 @@ export function createTrack({ seed = 1, mode = "city" } = {}) {
     propsBetween(z0, z1) {
       const out = [];
       const first = Math.max(0, Math.floor(z0 / propStep));
-      const last = Math.max(0, Math.floor(z1 / propStep));
-      for (let i = first; i <= last; i++) {
+      const last = Math.floor(z1 / propStep);
+      for (let n = first; n <= last; n++) {
+        // **槽号按一圈取模，位置照世界 z 走**：第二圈的路边和第一圈一模一样。
+        const i = ((n % perLap) + perLap) % perLap;
         const r = hash2(seed + 11, i);
-        const z = i * propStep + hash2(seed + 17, i) * propStep * 0.7;
+        const z = n * propStep + hash2(seed + 17, i) * propStep * 0.7;
         if (z < z0 || z > z1) continue;
         const side = hash2(seed + 23, i) < 0.5 ? -1 : 1;
         const gap = 2.2 + hash2(seed + 29, i) * 9;
         out.push({
-          i, z, side,
+          i: n, z, side,
           x: side * (halfWidth + SHOULDER_W + gap),
           kind: slots[i] || slots[slots.length - 1],
           s: 0.78 + hash2(seed + 37, i) * 0.5,
@@ -160,8 +194,8 @@ export function createTrack({ seed = 1, mode = "city" } = {}) {
   };
 }
 
-/** 起点/终点线所在的 z。起点是 0，终点是赛道长度。 */
-export const FINISH_Z = track => track.length;
+/** 起点/终点线所在的 z。起点是 0，终点在**跑完所有圈**的地方。 */
+export const FINISH_Z = track => track.totalLength;
 
 /**
  * 发车格：15 台车不要挤成一坨，三列一排、一排一排往后错。

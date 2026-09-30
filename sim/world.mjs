@@ -14,15 +14,22 @@ import { clamp, DT } from "./constants.mjs";
 import { BIKES, BOT_NAMES, MAX_RACERS, MODES, PALETTES } from "./data.mjs";
 import { createTrack, gridSlot } from "./track.mjs";
 import { cullCritters, spawnCritters, stepCritters } from "./critters.mjs";
-import { armTheField } from "./pickups.mjs";
+import { MAX_PICKUPS, armTheField } from "./pickups.mjs";
 import { newRacer } from "./racer.mjs";
 import { resetHistory } from "./history.mjs";
 
 /** 发车前倒数几秒。这段时间里油门是锁死的——十五台车一起抢第一个弯才公平。 */
 export const COUNTDOWN = 3.2;
 
-/** 一场比赛的时间上限（秒）。到点就结算，跑不完的按已跑距离排名。 */
-export const TIME_LIMIT = 210;
+/**
+ * 一场比赛的时间上限（秒）。到点就结算，跑不完的按已跑距离排名。
+ *
+ * **它得跟着圈数走。** 一圈 3~4.6 公里、人均 40 米/秒，一圈就是一分半上下；
+ * 上限原来照"单程"定的 210 秒，改成三圈之后还剩不到一圈的余量——正常跑完的人
+ * 一大半会被"时间到"截胡。所以按 `TIME_LIMIT_PER_LAP × 圈数` 现算。
+ */
+export const TIME_LIMIT_PER_LAP = 210;
+export const TIME_LIMIT = TIME_LIMIT_PER_LAP * 3;
 
 export function createWorld({ tenant, roomId, mode = "city", difficulty = 1, seed = 1 }) {
   const m = MODES[mode] ? mode : "city";
@@ -69,6 +76,10 @@ export function startMatch(w, roster, seed) {
   w.seed = (seed >>> 0) || w.seed;
   w.matchSeed = w.seed;
   w.track = createTrack({ seed: w.matchSeed, mode: w.mode });
+  // 上限跟着圈数走：三圈的路程是三倍，计时门限也得是三倍（见 `TIME_LIMIT_PER_LAP`）。
+  w.timeLimit = TIME_LIMIT_PER_LAP * w.track.laps;
+  // 地上的家伙同理：按圈数放大，路变长三倍，能同时躺着的件数也该是三倍。
+  w.maxPickups = MAX_PICKUPS * w.track.laps;
   w.time = 0; w.tick = 0; w.phase = "live";
   w.countdown = COUNTDOWN;
   w.stepCarry = 0;

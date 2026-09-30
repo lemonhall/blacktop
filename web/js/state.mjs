@@ -59,12 +59,21 @@ export const S = {
    * 胳膊一能动就立刻兑现（见 `input.mjs` 的 `pumpActions`）。
    */
   actWait: null,
+  /** 鼠标左键按着（松手/失焦/切后台就熄）：它和按住 J 等价，见 `input.mjs`。 */
+  mouseHold: false,
   seq: 0,
   lastSentAt: 0,
   lastPingAt: 0,
 
   predictW: null,               // 本地预测用的迷你世界（只有赛道 + 我自己）
   predictMe: null,              // 本地预测出来的那台车
+  /**
+   * 预测世界"欠"真实时间多少秒：攒够一格就走一格，剩下这一小截留在手上。
+   *
+   * 它是**画**用的，不是算用的：预测停在整格上，画面得落在两格之间。少这一项，
+   * 相机就跟着整格台阶走——路面上的一切相对于镜头都在一顿一顿地跳。
+   */
+  tickAcc: 0,
   cmd: null,                    // 正在累积的这一条输入命令
   cmds: [],                     // 已经发出去、还没被服务端 ack 的命令（重放用）
   cmdSeq: 0,

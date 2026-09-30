@@ -41,7 +41,9 @@ export function newRacer(w, { id, kind, ownerId, name, bike = 0, palette = 0, sk
     atk: null,
     belt: [], wi: 0,
     lastHit: -99, downs: 0, kills: 0, crashes: 0, topV: 0, cash: 0,
-    finished: false, finishTime: 0, rank: 0, kmh: 0,
+    // `lap` 是"正在跑第几圈"（从 1 起），`z` 是总里程。两个都记：排名看 `z`，
+    // 界面看 `lap`——见 `crossFinish`。
+    finished: false, finishTime: 0, rank: 0, kmh: 0, lap: 1,
   };
   resetQueue(r);
   return r;
@@ -71,9 +73,11 @@ export function stepRacer(w, r, dt, input = {}) {
   // 前进。这一步**必须**在算完 v 之后、压车之前：压车的难度与离心力都跟速度
   // 挂钩，而"这一格走多远"用的就是刚刚更新过的那个速度。
   r.z += r.v * dt;
-  // 冲线之后还能往前滑一段（进缓冲区），但不能无限跑下去——那会让"世界的长度"
-  // 变成一个没有上界的数，车流回收的判据跟着一起失效。
-  if (r.z > w.track.length + 90) r.z = w.track.length + 90;
+  // 冲过**终点**之后还能往前滑一段（进缓冲区），但不能无限跑下去——那会让"世界的
+  // 长度"变成一个没有上界的数，车流回收的判据跟着一起失效。注意这里夹的是
+  // `totalLength`（三圈的终点），不是一圈的尽头：夹错一个量，所有人都会被钉在第一
+  // 圈的终点线上。
+  if (r.z > w.track.totalLength + 90) r.z = w.track.totalLength + 90;
 
   // 压车：速度越高越难压（这是"极速车弯道吃亏"的来源），弯道里还有一股离心力。
   const turn = spec.turn * (1.28 - 0.6 * (r.v / spec.vmax));
@@ -129,9 +133,22 @@ function stepWreck(w, r, dt) {
   return r;
 }
 
-/** 越线：名次由"第几个冲过终点"决定，所以这里只记时刻，排序在世界层做。 */
+/**
+ * 越线：名次由"第几个冲过终点"决定，所以这里只记时刻，排序在世界层做。
+ *
+ * `z` 是一路累加的**总里程**（不按圈取模），所以"谁在前面"永远就是 `z` 谁大；
+ * 圈数只是把它除以一圈长度取整。这两个量分开记，是因为"按第几圈排名"会在圈末
+ * 把整桌人的次序抖一下——那正是赛车游戏里最不该出现的假动作。
+ */
 export function crossFinish(w, r) {
-  if (r.finished || r.z < w.track.length) return false;
+  const lap = Math.min(w.track.laps, Math.floor(r.z / w.track.length) + 1);
+  if (lap > (r.lap || 1)) {
+    r.lap = lap;
+    if (!r.finished) {
+      w.events.push({ k: "lap", a: r.id, l: lap, n: w.track.laps, z: r.z, x: r.x, h: r.kind === "human" });
+    }
+  }
+  if (r.finished || r.z < w.track.totalLength) return false;
   r.finished = true;
   r.finishTime = w.time;
   r.rank = ++w.finishers;

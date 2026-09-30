@@ -59,6 +59,18 @@ test("标记引用的样式表与脚本都真的存在", () => {
 });
 
 /**
+ * "第几圈"那一格：`hud.mjs` 是用 `set("hudLap", …)` 写它的，而 `set` 里的取 id 是
+ * 通用的 `$(id)`——上面那条正则扫的是**字面量** `$("xxx")`，于是这一格漏在网外。
+ * 少了它，一局三圈跑下来玩家看不见自己在第几圈，而页面不会报任何错。
+ */
+test("HUD 上有'第几圈'那一格，脚本写的正是它", () => {
+  assert.ok(ids.has("hudLap"), "index.html 缺少 #hudLap");
+  const hud = readFileSync(path.join(ROOT, "web", "js", "hud.mjs"), "utf8");
+  assert.match(hud, /set\("hudLap"/u, "hud.mjs 没在写 #hudLap");
+  assert.match(hud, /view\.laps/u, "圈数得从视图里读，不能写死");
+});
+
+/**
  * 前端模块的 import 分两类，都必须落在 `web/` 里真的存在：
  *
  *   1. `/sim/x.mjs` —— 站点绝对路径，浏览器就是从这个地址取共享内核；

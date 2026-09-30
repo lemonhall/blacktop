@@ -126,6 +126,13 @@ export function buildView(S) {
       mine.x = predicted.x; mine.z = predicted.z;
       mine.v = predicted.v; mine.kmh = predicted.v * 3.6;
       mine.lean = predicted.lean; mine.wobble = predicted.wobble;
+      // 预测是**整格**推进的（一格 1/60 秒），画面却要落在两格之间。补的这几个
+      // 厘米是"已经过去、还没来得及模拟"的那一小段时间——不补，相机就跟着整格
+      // 台阶走，路面上的车流相对于镜头就是一顿一顿地跳（60fps 下看不出来，
+      // 120fps 和 30fps 下都看得很清楚）。
+      const left = subTickSeconds(S);
+      mine.z += predicted.v * left;
+      mine.x += (predicted.lat || 0) * left;
     }
     mine.me = true;
     S.me = mine;
@@ -133,10 +140,13 @@ export function buildView(S) {
 
   order(racers);
   const leader = racers.find(r => r.rank === 1) || racers[0] || null;
-  const finishZ = S.map.length;
+  // 起点到终点的总里程 = 一圈长度 × 圈数。进度条、与头名的距离都按它算，
+  // 而不是按"一圈跑完"——那是上一版的事。
+  const finishZ = S.map.length * (S.map.laps || 1);
   return {
     time: tm, carTime: S.carTm, tick: newer.tk, phase: newer.ph, countdown: newer.cd || 0,
     racers, traffic, critters, pickups, mine, leader, finishZ,
+    laps: S.map.laps || 1,
     myRank: mine ? mine.rank || 1 : 1,
     field: racers.length,
   };
@@ -169,8 +179,22 @@ function carLeadOf(S, now) {
  */
 function leadTime(S, snap, tm, now) {
   const ticks = pendingTicks(S);
-  if (S.predictMe && ticks > 0) return (S.serverTime || snap.tm) + ticks * DT;
+  // 整格数 + 已经走掉的那一小段：别的车得和**我自己**画在同一个时刻上，
+  // 少这后半截，我这一台就会比整条路超前最多一格。
+  if (S.predictMe && ticks > 0) return (S.serverTime || snap.tm) + ticks * DT + subTickSeconds(S);
   return snap.tm + carLeadOf(S, now);
+}
+
+/**
+ * 这一格**已经过去了多少秒**：预测世界停在第 N 格的末尾，而真实时间已经走到
+ * 第 N 格末尾 + 这一小段。`app.mjs` 每帧把它留在 `S.tickAcc` 里。
+ *
+ * 上限压在一格之内：那是"还没被模拟的时间"，超过一格说明这一帧还没跑完
+ * （掉帧、刚切回标签页），那时候宁可让人看着自己慢半拍，也不许把车往外推。
+ */
+function subTickSeconds(S) {
+  const left = (S.tickAcc || 0) / DT;
+  return left > 0 ? clamp(left, 0, 1) * DT : 0;
 }
 
 /** 还没被服务端确认的格数（= 本地预测比权威端多走的格数）。 */

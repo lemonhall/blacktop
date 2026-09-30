@@ -52,6 +52,13 @@ export function updateHud(view) {
   set("hudRank", me ? String(me.rank || view.myRank) : "—");
   set("hudField", `/${view.field}`);
   set("hudTimer", clock(view.time));
+  /*
+   * 第几圈。`z` 是一路累加的总里程，所以圈数就是它除以一圈长度——**不出圈数这个
+   * 字段、也不按圈排名**，理由见 `sim/racer.mjs` 的 `crossFinish`。
+   */
+  const lapLen = view.finishZ / (view.laps || 1);
+  const lap = me ? Math.min(view.laps, Math.max(1, Math.floor(me.z / lapLen) + 1)) : 1;
+  set("hudLap", view.laps > 1 ? `第 ${lap}/${view.laps} 圈` : "单程 · 到终点");
   set("hudName", me ? me.name : "—");
   set("hudGap", gapText(view, me));
   set("hudRival", rival ? rival.name : "独自领跑");

@@ -32,6 +32,7 @@ export function encodeMap(w) {
     difficulty: w.difficulty,
     lanes: w.track.lanes,
     length: w.track.length,
+    laps: w.track.laps,
     countdown: r2(w.countdown),
     // 名册：谁是谁。快照里只发会变的东西，名字/配色/车型发一次就够。
     roster: w.racers.map(r => [r.id, r.ownerId, r.kind, r.name, r.bike, r.palette, r.skill]),
@@ -45,7 +46,8 @@ export function decodeMap(msg) {
   }
   return {
     mode: msg.mode, seed: msg.seed, difficulty: msg.difficulty,
-    lanes: msg.lanes, length: msg.length, countdown: msg.countdown || 0, roster,
+    lanes: msg.lanes, length: msg.length, laps: msg.laps || 1,
+    countdown: msg.countdown || 0, roster,
   };
 }
 

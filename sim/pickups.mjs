@@ -8,8 +8,9 @@
  * 三条约束：
  *   1. **确定性**：掉落只吃位置与时间，不看随机数。同一颗种子的两场比赛完全一致。
  *   2. **没有记忆**：在地上的东西过了 90 秒或者落到所有人后面就消失，不维护账本。
- *   3. **有上限**：一局里最多同时躺 14 件，超了丢最老的——十五台车互相抢的时候，
- *      这个数足够用，也不至于把快照撑大。
+ *   3. **有上限**：**每圈**最多同时躺 14 件，超了丢最老的——十五台车互相抢的时候，
+ *      这个数足够用，也不至于把快照撑大。上限按圈数放大（`startMatch` 里算），
+ *      否则三圈的开局撒货会把第一圈那几件直接挤掉，路面密度反而变稀。
  */
 
 import { random, randInt } from "./rng.mjs";
@@ -37,7 +38,7 @@ export function placePickup(w, item, x, z) {
 }
 
 function place(w, item, x, z) {
-  if (w.pickups.length >= MAX_PICKUPS) w.pickups.shift();
+  if (w.pickups.length >= (w.maxPickups || MAX_PICKUPS)) w.pickups.shift();
   const at = { id: w.nextEntity++, i: item.i, charges: item.charges | 0, x, z, t: w.time };
   w.pickups.push(at);
   return at;
@@ -50,8 +51,9 @@ export const freshItem = i => ({ i, charges: WEAPONS[i] ? WEAPONS[i].charges : 0
  * 开局摆阵：**三分之一的机器人自带家伙**（原版就是这样，"some opponents wield
  * weapons"——不然场上根本没有可抢的东西），再沿路撒几件。
  *
- * 撒货的位置从 700 米往后铺到全长，越往后越稀：前半程靠抢，后半程靠捡，
- * 这样一场比赛里两种节奏都尝得到。全部走世界随机流，所以同一颗种子逐位一致。
+ * 撒货的位置从 700 米往后铺到一圈的尽头，越往后越稀：前半圈靠抢，后半圈靠捡，
+ * 这样一场比赛里两种节奏都尝得到。**每一圈都摆同一批**——一局跑三圈，中间那两圈
+ * 路上才不会光秃秃的。全部走世界随机流，所以同一颗种子逐位一致。
  */
 export function armTheField(w) {
   const kinds = WEAPONS.length - 1;
@@ -61,9 +63,11 @@ export function armTheField(w) {
     giveWeapon(r, 1 + randInt(w, kinds));
   }
   const n = 6;
-  for (let k = 0; k < n; k++) {
-    const z = 700 + (w.track.length - 1000) * (k / (n - 1));
-    placePickup(w, freshItem(1 + randInt(w, kinds)), w.track.laneX(randInt(w, w.track.lanes)), z);
+  for (let lap = 0; lap < w.track.laps; lap++) {
+    for (let k = 0; k < n; k++) {
+      const z = lap * w.track.length + 700 + (w.track.length - 1000) * (k / (n - 1));
+      placePickup(w, freshItem(1 + randInt(w, kinds)), w.track.laneX(randInt(w, w.track.lanes)), z);
+    }
   }
   return w;
 }

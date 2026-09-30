@@ -97,6 +97,8 @@ function noise(duration, volume, center, q = 1.2) {
 const RECIPES = {
   go: () => [440, 660, 880].forEach((f, i) => tone(f, 0.22, "square", 0.05, 0, i * 0.1)),
   nitro: () => { tone(180, 0.5, "sawtooth", 0.05, 620); noise(0.45, 0.05, 1600, 0.7); },
+  // 过一圈线：两声上行，短、清楚、不抢戏——一局要听三遍，做成烟花就烦了。
+  lap: () => [659, 988].forEach((f, i) => tone(f, 0.2, "triangle", 0.055, 0, i * 0.13)),
   punch: () => { noise(0.09, 0.09, 900, 0.9); tone(150, 0.08, "square", 0.04, -60); },
   hurt: () => { noise(0.14, 0.1, 500, 0.8); tone(90, 0.16, "sawtooth", 0.05, -30); },
   whiff: () => noise(0.08, 0.04, 2400, 2.4),

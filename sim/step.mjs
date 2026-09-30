@@ -108,7 +108,7 @@ function cameraBackZ(w) {
  */
 function checkEnd(w) {
   if (w.phase !== "live") return;
-  if (w.time >= TIME_LIMIT) return void settle(w, "time_up");
+  if (w.time >= (w.timeLimit || TIME_LIMIT)) return void settle(w, "time_up");
   if (w.finishers >= w.racers.length) return void settle(w, "all_finished");
   if (w.finishers === w.racers.length - 1 && w.time > 25) {
     const last = w.racers.find(r => !r.finished);

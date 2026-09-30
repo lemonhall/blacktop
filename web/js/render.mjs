@@ -32,6 +32,16 @@ export function floaterSize(ppm, big) {
   return Math.min(big ? 44 : 28, (big ? 1.15 : 0.85) * ppm + 8);
 }
 
+/**
+ * 头顶名字牌离地多高（米）。
+ *
+ * 车手贴图的包围盒顶边在 **1.84 米**（头盔顶 1.776 米，见 `sprites.mjs` 的 `BOX`），
+ * 所以 2.05 就是"贴着盔顶飘一指头"。上一版写的是 2.9——离头顶一米多，名字像
+ * 挂在半空的氢气球上，和它下面那个人没关系了。名字牌是**标签**，标签要贴住被标的
+ * 那个东西。
+ */
+export const NAME_H = 2.05;
+
 export function renderGame(ctx, view) {
   if (!view || !S.track) return;
   const W = S.view.w, H = S.view.h;
@@ -251,7 +261,7 @@ function drawRacerSprite(ctx, cam, tbl, r, view) {
    * 它和那个圆角矩形的 HUD 是同一类毛病：一眼看去就不像是这台车身上的。
    */
   if ((r.kind === "human" || me) && p.ppm > 0.3) {
-    label(ctx, p.sx, p.sy - 2.9 * p.ppm, r.name, me ? "#ffd88a" : "#dfe8ff",
+    label(ctx, p.sx, p.sy - NAME_H * p.ppm, r.name, me ? "#ffd88a" : "#dfe8ff",
       Math.min(15, 0.55 * p.ppm + 8));
   }
 }
