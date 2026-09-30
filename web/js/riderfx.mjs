@@ -7,7 +7,7 @@
  */
 
 import { TAU } from "../../sim/constants.mjs";
-import { bloom, circle, fillRound, poly, shade, tube } from "./art.mjs";
+import { bloom, circle, fillRound, shade, tube } from "./art.mjs";
 import { RIDE } from "./bike.mjs";
 import { drawHeld } from "./weaponsart.mjs";
 
@@ -77,21 +77,47 @@ export function idleWeapon(ctx, weapon) {
   ctx.restore();
 }
 
-/** 氮气：排气口喷两口白热火焰，位置与长度用一条极便宜的伪随机流抖动。 */
+/**
+ * 氮气：排气口喷两口白热火焰。
+ *
+ * 这是**从车后看的**排气，喷流正对着镜头，所以它在画面里是"一短截往下拖"，
+ * 而不是一条一米长的火舌。上一版画的是两个**直边四边形**（上宽下窄、最长 1 米、
+ * 半透明蓝），隔着屏幕看就是后备箱里插着两块玻璃板。
+ *
+ * 这一版换三件做法：轮廓用曲线收口（叶子形，不是梯形）、三层递减的浓淡
+ * （外蓝 → 中青 → 内白）走 `lighter` 加色混合、长度压到 0.24 米——**排气口在
+ * 0.36 米高**，火舌再长就穿过路面垂到车底下去了，那是两个蓝色路锥，不是火。
+ */
 export function nitroFlame(ctx, seed) {
   const t = performance.now() / 90 + seed;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
   for (const side of [-1, 1]) {
-    const x = side * 0.26, y = 0.32;
-    const len = 0.72 + Math.sin(t * 2.3 + side) * 0.28;
-    const g = ctx.createLinearGradient(x, y, x, y - len);
-    g.addColorStop(0, "rgba(255,255,255,.95)");
-    g.addColorStop(0.3, "rgba(150,225,255,.8)");
-    g.addColorStop(0.7, "rgba(90,130,255,.35)");
-    g.addColorStop(1, "rgba(60,110,255,0)");
-    poly(ctx, [
-      [x - 0.14, y], [x + 0.14, y],
-      [x + 0.045, y - len], [x - 0.045, y - len],
-    ], g);
-    bloom(ctx, x, y, 0.34, "rgba(140,210,255,.32)", 0.8);
+    const x = side * 0.26 + Math.sin(t * 4.1 + side) * 0.012;
+    const y = 0.36;
+    const len = 0.24 + Math.sin(t * 2.3 + side) * 0.045;
+    const half = 0.086 + Math.sin(t * 3.4 + side * 2) * 0.01;
+    const lobes = [
+      [half, len, "rgba(84,140,255,.4)", "rgba(62,110,255,.16)"],
+      [half * 0.74, len * 0.84, "rgba(126,208,255,.5)", "rgba(110,180,255,.2)"],
+      [half * 0.46, len * 0.58, "rgba(255,255,255,.72)", "rgba(214,240,255,.3)"],
+    ];
+    for (const [hw, l, near, mid] of lobes) {
+      const g = ctx.createLinearGradient(x, y, x, y - l);
+      g.addColorStop(0, near);
+      g.addColorStop(0.52, mid);
+      g.addColorStop(1, "rgba(40,90,255,0)");
+      ctx.beginPath();
+      ctx.moveTo(x - hw, y);
+      ctx.quadraticCurveTo(x - hw * 1.14, y - l * 0.46, x - hw * 0.2, y - l * 0.88);
+      ctx.quadraticCurveTo(x + side * 0.02, y - l * 1.08, x + hw * 0.2, y - l * 0.88);
+      ctx.quadraticCurveTo(x + hw * 1.14, y - l * 0.46, x + hw, y);
+      ctx.closePath();
+      ctx.fillStyle = g;
+      ctx.fill();
+    }
+    // 喷口那一小团白热：没有它，三片叶子是"飘"在管子外面的
+    bloom(ctx, x, y - 0.02, 0.15, "rgba(190,235,255,.55)", 0.85);
   }
+  ctx.restore();
 }

@@ -16,7 +16,8 @@ import { WEAPONS } from "../sim/weapons.mjs";
 import { PEG, RIDE, TAIL_HALF, drawBike } from "../web/js/bike.mjs";
 import { drawRider } from "../web/js/sprites.mjs";
 import { LEG } from "../web/js/riderlegs.mjs";
-import { assertBalanced, assertSane, countOps, fingerprint, spyCtx } from "./helpers/spy-ctx.mjs";
+import { nitroFlame } from "../web/js/riderfx.mjs";
+import { assertBalanced, assertSane, bounds, countOps, fingerprint, spyCtx } from "./helpers/spy-ctx.mjs";
 
 const rider = extra => ({ cx: 400, baseY: 700, s: 140, palette: 0, lean: 0, swing: 0, wreck: 0, ...extra });
 
@@ -96,6 +97,26 @@ test("手里每件家伙都画得出来，而且共用同一套挥拳轨迹", ()
     assertSane(idle.ops, idle.invalid, `${spec.name} · 举`);
   }
   assert.equal(shapes.size, WEAPONS.length, "有两件家伙挥起来长得一模一样");
+});
+
+/**
+ * 氮气的画法契约。
+ *
+ * 这一条是从实况图里倒推出来的：上一版的火舌是两个**直边四边形**，最长 1 米、
+ * 半透明蓝，从 0.32 米高的排气口往下拖——画面上像后备箱里插着两块玻璃板，
+ * 而且火舌的末端已经穿到路面以下。所以这里钉死三件事：不能穿过路面、
+ * 不能长到"拖在地上"、两口火不能糊成一片。
+ */
+test("氮气是两口贴地的小火舌：不穿路面、不拖到车底下、不糊成一片", () => {
+  const { ctx, ops, invalid } = spyCtx();
+  nitroFlame(ctx, 3);
+  assertBalanced(ops, "氮气");
+  assertSane(ops, invalid, "氮气");
+  const b = bounds(ops);
+  assert.ok(b.y0 > 0, `火舌最低到 ${b.y0.toFixed(3)} 米——已经垂到路面以下了`);
+  assert.ok(b.y1 - b.y0 < 0.55, `火舌长 ${(b.y1 - b.y0).toFixed(2)} 米，这已经不是"喷一口"`);
+  assert.ok(b.x0 < -0.2 && b.x1 > 0.2, "两口火没有分在排气口两边");
+  assert.ok(b.x1 - b.x0 < 1, `两口火横向占了 ${(b.x1 - b.x0).toFixed(2)} 米，糊成一片了`);
 });
 
 test("脏输入不该把渲染循环带崩", () => {
