@@ -9,6 +9,7 @@
  */
 
 import { hash2 } from "../../sim/rng.mjs";
+import { withAlpha } from "./art.mjs";
 
 export const AIR = {
   stars: (p, ctx, w, h) => {
@@ -20,9 +21,18 @@ export const AIR = {
   sun: (p, ctx, w, h) => {
     const s = p.sun;
     const cx = w * s.x, cy = h * s.y, r = h * s.r;
-    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 3.4);
+    /*
+     * 太阳的辉光**从圆心就开始衰减**，而且要留够档位。
+     *
+     * 上一版只有 0（本色）和 0.4（halo）两档，中间那段近乎平的高亮在半径四百像素
+     * 时铺开来就是一枚大圆盘——和 `bloom()` 栽的是同一个跟头：半径一大，"光"就
+     * 变成了"饼"。这里补成四档，并且把最亮的那一档压到 0.12 半径以内。
+     */
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 3.2);
     glow.addColorStop(0, s.color);
-    glow.addColorStop(0.4, s.halo);
+    glow.addColorStop(0.12, withAlpha(s.halo, 1.5));
+    glow.addColorStop(0.36, withAlpha(s.halo, 0.46));
+    glow.addColorStop(0.68, withAlpha(s.halo, 0.12));
     glow.addColorStop(1, "rgba(255,120,80,0)");
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, w, h);
