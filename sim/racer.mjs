@@ -19,13 +19,14 @@ import { clamp, KMH } from "./constants.mjs";
 import { BIKES } from "./data.mjs";
 import { takePickup } from "./pickups.mjs";
 import { cycleWeapon } from "./weapons.mjs";
-import { attack, bump } from "./combat.mjs";
+import { attack, bump, syncAttack } from "./combat.mjs";
 import { collideTraffic } from "./impact.mjs";
 import { NITRO_CD, NITRO_TIME, STAMINA_MAX, TUNE, specOf } from "./spec.mjs";
 import { resetQueue } from "./netcode.mjs";
+import { poseFor } from "./history.mjs";
 
 export { NITRO_CD, NITRO_TIME, STAMINA_MAX, TUNE, specOf };
-export { attack, punchTarget, bump } from "./combat.mjs";
+export { attack, punchTarget, syncAttack, bump } from "./combat.mjs";
 export { collideTraffic, wreck } from "./impact.mjs";
 
 export function newRacer(w, { id, kind, ownerId, name, bike = 0, palette = 0, skill = 1, grid = { x: 0, z: 0 } }) {
@@ -36,6 +37,8 @@ export function newRacer(w, { id, kind, ownerId, name, bike = 0, palette = 0, sk
     x: grid.x, z: grid.z, v: 0, lat: 0, lean: 0, wobble: 0,
     stamina: STAMINA_MAX, state: "ride", wreck: 0, wreckKind: "",
     attackCd: 0, hitCd: 0, swing: 0, nitroT: 0, nitroCd: 0,
+    // 挂起的那一拳（见 `combat.syncAttack`）：`null` = 胳膊是空的。
+    atk: null,
     belt: [], wi: 0,
     lastHit: -99, downs: 0, kills: 0, crashes: 0, topV: 0, cash: 0,
     finished: false, finishTime: 0, rank: 0, kmh: 0,
@@ -93,8 +96,13 @@ export function stepRacer(w, r, dt, input = {}) {
   // 换家伙放在挥拳**之前**——举对了再打，不然"按键那一格"会白挥。
   // bit1 与 bit2 同时按着也只出一拳：原版一挥手就只挥一次，共用同一个冷却。
   if (input.act & 4) cycleWeapon(r, 1);
-  if (input.act & 1) attack(w, r, 1);
-  else if (input.act & 2) attack(w, r, -1);
+  // `input.vt` / `input.cvt` 是**人**才有的字段：它们说"我按这一下的时候，屏幕上
+  // 显示的人和车分别是哪一刻"。判定就回到那一刻去算——见 `history.mjs` 里那笔
+  // 0.24 秒的账。机器人没有这两个字段，本地预测也没有，两种都自然退回"用当下"。
+  // 上一格挂起的那一拳先兑现：世界又往前走了 1/60 秒，也许车已经撞进窗口了。
+  syncAttack(w, r, dt);
+  if (input.act & 1) attack(w, r, 1, poseFor(w, input));
+  else if (input.act & 2) attack(w, r, -1, poseFor(w, input));
 
   takePickup(w, r);
   collideTraffic(w, r) || bump(w, r);

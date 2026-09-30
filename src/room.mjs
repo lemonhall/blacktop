@@ -141,6 +141,11 @@ export class Room extends DurableObject {
       // 动作位现在是三位：bit1 前打 / bit2 回身打 / bit4 换家伙。
       // 这里少留一位的症状很隐蔽——按键不报错、不出手，只是"换不了家伙"。
       act: (msg.act | 0) & 7,
+      // 玩家出手时屏幕上显示的**人和车**分别是哪一刻。攻击判定拿这两个时刻回看
+      // ——不认这一条的依据，只认它本身；非法值在 `history.poseAt` 里会被夹进
+      // 回看上限。车流的那一个比人的晚（画面上被补到最新一帧，见 `web/js/view.mjs`）。
+      vt: Number.isFinite(msg.vt) ? Number(msg.vt) : undefined,
+      cvt: Number.isFinite(msg.cvt) ? Number(msg.cvt) : undefined,
       nos: dir.nos ? 1 : 0,
       n,
     }, now);

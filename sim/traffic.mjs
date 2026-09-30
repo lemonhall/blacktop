@@ -16,6 +16,8 @@
 
 import { clamp } from "./constants.mjs";
 import { random, randInt } from "./rng.mjs";
+import { TUNE } from "./spec.mjs";
+import { carPose, racerPose } from "./history.mjs";
 
 /**
  * 车辆尺寸与车速（米）。`len` 是车长，碰撞判定用的就是它。
@@ -197,20 +199,30 @@ export function fling(w, v, dirX) {
  * 找出"正前方够得着、可以踹"的那辆车。
  *
  * 对向来车和同向慢车**都算**：迎面来的踹起来最爽，而追上一个慢慢晃的公交车、
- * 从旁边一脚把它蹬出去，是这个游戏另一半的乐趣。窗口刻意给得比出拳远一点
- * （13 米），因为踹一台 16 米的半挂，你得先够到它的车身。
+ * 从旁边一脚把它蹬出去，是这个游戏另一半的乐趣。
+ *
+ * **判据量的是"到车面的距离"，不是"到车中心的距离"。** 这一条是线上手感换来的：
+ * 原来按车的**原点**（车身中心）算 13 米，于是一台 16.5 米的半挂，玩家真正能按的
+ * 机会只有 65 毫秒——车身越长、越踢不着，与"一脚踹飞大运"的卖点正好相反。改成
+ * 量到近侧车面之后，每台车的窗口宽度只由"相对速度"决定，不再由车长决定。
+ *
+ * `pose` 是玩家出手那一刻的世界位姿（见 `history.mjs`）。有它就用它——"我看见它
+ * 就在眼前"和"服务端算的时候它已经贴脸了"之间差着十几米，对向车尤其明显。
  */
-export function kickTarget(w, r, reachZ = 13, reachX = 3.4) {
-  let best = null, bestDz = Infinity;
+export function kickTarget(w, r, pose = null) {
+  const me = racerPose(pose, r);
+  let best = null, bestGap = Infinity;
   for (const v of w.traffic) {
     if (v.state !== "run" || !kickable(v.kind)) continue;
-    const dz = v.z - r.z;
-    // 同向的车要靠得更近才算够得着（你们在往同一个方向跑），对向车迎上来的那
-    // 一瞬间就算数。不这么分，"追上十米外的一台公交车、一脚把它踹飞"就太廉价了。
-    const front = v.dir === -1 ? reachZ : reachZ * 0.62;
-    if (dz < -2.2 || dz > front) continue;
-    if (Math.abs(v.x - r.x) > reachX) continue;
-    if (dz < bestDz) { best = v; bestDz = dz; }
+    const p = carPose(pose, v);
+    // 近侧车面：对向车迎着你的是车头，同向车对着你的是车尾——两种都是 `z - len/2`，
+    // 因为你永远从 z 更大的一侧靠近它。
+    const gap = p.z - VEHICLES[v.kind].len / 2 - me.z;
+    const reach = v.dir === -1 ? TUNE.kickReach : TUNE.kickReach * TUNE.kickSame;
+    // 下界允许一点重叠：两台东西都在动，车面"刚好擦过"的那一格不该被判成够不着。
+    if (gap > reach || gap < -TUNE.kickOverlap) continue;
+    if (Math.abs(p.x - me.x) > TUNE.kickX) continue;
+    if (gap < bestGap) { best = v; bestGap = gap; }
   }
   return best;
 }

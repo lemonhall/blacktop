@@ -83,6 +83,13 @@ function flush() {
   post({
     t: "in", sq: cmd.sq, th: cmd.th, br: cmd.br, st: cmd.st,
     nos: cmd.nos ? 1 : 0, act, n: cmd.n,
+    // `vt` / `cvt`：**我此刻屏幕上那幅画是哪一刻**。画面里所有东西——我自己、
+    // 其他车手、车流、畜生——现在都画在同一个时刻上（见 `view.mjs` 的 `leadTime`），
+    // 所以这两个字段是同一个值，服务端拿它做攻击回看（`sim/history.mjs`）。
+    // 不带上它，我的拳头就只能按"服务端此刻"算，而两边的世界差着十几米。
+    // 还没进赛道（没有画面）时不发：让服务端退回"用当下"。
+    vt: S.carTm > 0 ? Math.round(S.carTm * 1000) / 1000 : undefined,
+    cvt: S.carTm > 0 ? Math.round(S.carTm * 1000) / 1000 : undefined,
   });
   if (S.cmds.length > MAX_PENDING) S.cmds.splice(0, S.cmds.length - MAX_PENDING);
   return true;

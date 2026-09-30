@@ -11,13 +11,14 @@
 
 import { DT } from "./constants.mjs";
 import { aiInput } from "./ai.mjs";
-import { settleAck, takeCmd } from "./netcode.mjs";
+import { BURST_TICKS, grantCredit, settleAck, spendCredit, takeCmd } from "./netcode.mjs";
 import { crossFinish, stepRacer } from "./racer.mjs";
 import { cullPickups } from "./pickups.mjs";
 import { cullCritters, spawnCritters, stepCritters } from "./critters.mjs";
 import { random } from "./rng.mjs";
 import { cullTraffic, spawnTraffic, stepTraffic } from "./traffic.mjs";
 import { cullEvents } from "./events.mjs";
+import { recordHistory } from "./history.mjs";
 import { TIME_LIMIT, leadZ, settle } from "./world.mjs";
 
 export function stepWorld(w, dt = DT) {
@@ -39,21 +40,43 @@ export function stepWorld(w, dt = DT) {
   cullPickups(w, cameraBackZ(w));
   cullEvents(w);
   checkEnd(w);
+  // 位姿历史**记在最后**：它要的是"这一格走完之后大家在哪"，也就是下一个决定
+  // 出手的客户端所看到的那个世界的起点。顺序放错（比如记在最前面）会让每一次
+  // 回看都差一格，症状是"贴着人打，判定却说还差半米"。
+  recordHistory(w);
 }
 
-/** 单个车手的一格。真人从命令队列里取（队列空了就是"人在等"，不是"世界停了"）。 */
+/** 队列空了就是"人在等"，不是"世界停了"。 */
+const IDLE = { th: 0, br: 0, st: 0, act: 0, nos: false };
+/** 发车倒数：油门锁死、刹车压住——两边的世界都在等，谁也别抢跑。 */
+const lock = i => ({ ...i, th: 0, br: 1, act: 0, nos: false });
+const live = (w, i) => (w.countdown > 0 ? lock(i) : i);
+
+/**
+ * 单个车手的一格。真人从命令队列里取，机器人走 AI。
+ *
+ * 真人这一支多了一段"追积压"：先走那**正常的一格**（不花额度，"一 tick 一格"是
+ * 永远的最低保证），再拿攒下的额度把队列里剩下的吃掉几格。没有这一段，开局那一拍
+ * 或者浏览器卡一下送来的那一坨入力，会变成一条**永不消退的延迟线**——而玩家画面上
+ * 的车是本地预测的，两边差出几十米，攻击判定再准也没用。原因与算式见
+ * `netcode.mjs` 的 `BURST_TICKS`。
+ */
 function stepOne(w, r, dt) {
-  const locked = w.countdown > 0;
-  let input;
-  if (r.kind === "human") {
-    const cmd = takeCmd(r);
-    input = cmd || { th: 0, br: 0, st: 0, act: 0, nos: false };
-    stepRacer(w, r, dt, locked ? { ...input, th: 0, br: 1, act: 0, nos: false } : input);
-    settleAck(r);
+  if (r.kind !== "human") {
+    const input = aiInput(w, r, dt);
+    stepRacer(w, r, dt, live(w, input));
     return;
   }
-  input = aiInput(w, r, dt);
-  stepRacer(w, r, dt, locked ? { ...input, th: 0, br: 1, act: 0, nos: false } : input);
+  grantCredit(r);
+  stepRacer(w, r, dt, live(w, takeCmd(r) || IDLE));
+  settleAck(r);
+  for (let extra = 1; extra < BURST_TICKS && r.queued > 0; extra++) {
+    if (!spendCredit(r)) break;
+    const cmd = takeCmd(r);
+    if (!cmd) break;
+    stepRacer(w, r, dt, live(w, cmd));
+    settleAck(r);
+  }
 }
 
 /** 落到点就放一辆车。两条独立的节拍：普通车流密，大运稀。 */

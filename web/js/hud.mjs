@@ -15,6 +15,7 @@ import { WEAPONS } from "../../sim/weapons.mjs";
 import { BIKES } from "../../sim/data.mjs";
 import { FX } from "./state.mjs";
 import { drawGauge } from "./gauge.mjs";
+import { rangeLamps } from "./rangelamp.mjs";
 import { revs, TACH } from "./tach.mjs";
 
 /** 两只表共用满量程，指针偏角才能横向比较：我比他快多少，看角度差就够了。 */
@@ -62,6 +63,7 @@ export function updateHud(view) {
   set("hudStaText", me ? String(Math.round(me.stamina)) : "");
   set("hudRStaText", rival ? String(Math.round(rival.stamina)) : "");
   belt(me);
+  rangeLamps(view);
   progress(view, me);
   ranks(view);
   feed();

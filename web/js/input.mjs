@@ -24,8 +24,36 @@ const CYCLE = ["KeyQ"];
 /** 触屏那几个按钮 → 同一个位掩码（1 前打 / 2 回身打 / 4 换家伙）。 */
 const TOUCH_ACT = { punchFront: 1, punchBack: 2, cycle: 4 };
 
+/** 冷却中的那一拳最多替玩家记多久（毫秒）。太久就不该再兑现——玩家早忘了。 */
+const ACT_WAIT_MS = 420;
+
 const any = (keys, list) => list.some(code => keys.has(code));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+/**
+ * 一次动作的下发：胳膊空着就直接出手，还在收着就先记下来。
+ *
+ * "还在收着"的判据读的是**本地预测**的 `attackCd`——它和服务端同一段代码逐格
+ * 递减，所以两边不会对不上。这也正是预测层存在的意义之一：它不仅让画面跟手，
+ * 还让输入层**知道能不能出手**。
+ */
+function want(S, act) {
+  const cd = S.predictMe ? S.predictMe.attackCd : 0;
+  if (cd > 0.02) {
+    S.actWait = { act, until: performance.now() + ACT_WAIT_MS };
+    return;
+  }
+  S.actions |= act;
+}
+
+/** 每帧一次：冷却一结束就把记着的那一拳兑现掉。 */
+export function pumpActions(S, now = performance.now()) {
+  const wait = S.actWait;
+  if (!wait) return;
+  const cd = S.predictMe ? S.predictMe.attackCd : 0;
+  if (cd <= 0.02) { S.actions |= wait.act; S.actWait = null; return; }
+  if (now > wait.until) S.actWait = null;
+}
 
 export function attachInput(S, { onPunch, onNitro } = {}) {
   document.addEventListener("keydown", event => {
@@ -35,8 +63,8 @@ export function attachInput(S, { onPunch, onNitro } = {}) {
     // 方向键与空格会滚动页面——赛车游戏里这尤其致命（画面一顿就甩出弯道）。
     if (/^Arrow/u.test(event.code) || event.code === "Space") event.preventDefault();
     S.keys.add(event.code);
-    if (PUNCH_FRONT.includes(event.code)) { S.actions |= 1; onPunch?.(); }
-    else if (PUNCH_BACK.includes(event.code)) { S.actions |= 2; onPunch?.(); }
+    if (PUNCH_FRONT.includes(event.code)) { want(S, 1); onPunch?.(); }
+    else if (PUNCH_BACK.includes(event.code)) { want(S, 2); onPunch?.(); }
     else if (CYCLE.includes(event.code)) S.actions |= 4;
     if (NITRO.includes(event.code)) onNitro?.();
   });
@@ -48,6 +76,7 @@ export function attachInput(S, { onPunch, onNitro } = {}) {
 export function clearInputs(S) {
   S.keys.clear();
   S.actions = 0;
+  S.actWait = null;
   S.touch = { steer: 0, throttle: 0, brake: 0, nitro: 0 };
   document.querySelectorAll(".touch-pad>i").forEach(node => { node.style.transform = ""; });
   document.querySelectorAll(".touch-button").forEach(node => node.classList.remove("on"));
@@ -99,7 +128,9 @@ export function bindTouch(S, root) {
     const act = TOUCH_ACT[field] | 0;
     const down = event => {
       event.preventDefault(); button.classList.add("on");
-      if (act) { S.actions |= act; return; }
+      // 换家伙没有冷却，所以它绕开 `want` 直接发。
+      if (act === 4) { S.actions |= 4; return; }
+      if (act) { want(S, act); return; }
       S.touch[field] = 1;
     };
     const up = () => { button.classList.remove("on"); if (!act) S.touch[field] = 0; };

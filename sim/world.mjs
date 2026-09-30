@@ -16,6 +16,7 @@ import { createTrack, gridSlot } from "./track.mjs";
 import { cullCritters, spawnCritters, stepCritters } from "./critters.mjs";
 import { armTheField } from "./pickups.mjs";
 import { newRacer } from "./racer.mjs";
+import { resetHistory } from "./history.mjs";
 
 /** 发车前倒数几秒。这段时间里油门是锁死的——十五台车一起抢第一个弯才公平。 */
 export const COUNTDOWN = 3.2;
@@ -40,6 +41,9 @@ export function createWorld({ tenant, roomId, mode = "city", difficulty = 1, see
     racers: [], traffic: [], pickups: [], critters: [], critterCursor: 0, events: [],
     finishers: 0, finishOrder: [],
     nextTrafficAt: 0, nextDayunAt: 0,
+    // 位姿历史：服务端"回看"用的环形缓冲（见 `history.mjs`）。它是**从属数据**，
+    // 不是世界的一部分——清空它不会改变任何一局的走向。
+    hist: null,
     results: null, endedAt: 0, endReason: "",
   };
 }
@@ -98,6 +102,7 @@ export function startMatch(w, roster, seed) {
   // 摆家伙：一部分机器人自带一件，路上再撒几件。顺序放在所有人就位之后，
   // 因为掉落的位置要读赛道——而赛道的车道数此刻才定下来。
   armTheField(w);
+  resetHistory(w);
   return w;
 }
 

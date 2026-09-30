@@ -17,6 +17,7 @@ import { clamp } from "./constants.mjs";
 import { specOf } from "./racer.mjs";
 import { VEHICLES } from "./traffic.mjs";
 import { random } from "./rng.mjs";
+import { TUNE } from "./spec.mjs";
 
 /** 看一眼的时长（秒）。"车距够不够"比"前方多少米"更接近人的直觉。 */
 const HORIZON_S = 1.9;
@@ -36,7 +37,16 @@ export function makeBrain(w, r) {
     jitter: random(w, 0, 6.28),
     think: 0,
     skill: r.skill,
-    throttleCap: clamp(r.skill * random(w, 0.9, 1.0), 0.55, 1),
+    // 油门上限：**机器人得跟得上人，否则"人机混战"这四个字根本不成立**。
+    //
+    // 旧值 `skill × [0.9, 1]` 把机器人的稳态速度压到了人的 67%~90%，线上实测
+    // 开局第 21 秒领跑者就拉开了 150~300 米——路上没有对手，玩家按 J 当然打不着
+    // 人，只剩下迎面车可以赌一把。一条 14 台车的赛道上跑成"个人计时赛"，那不是
+    // 手感问题，是这一行数字的问题。
+    //
+    // 现在只留 3% 的性格差异（快脚/慢脚各有一点），差距全部交给**反应与走线**：
+    // 那两样才是"看起来像个人"的东西，而极速这种东西，只有拉开了才看得出来。
+    throttleCap: clamp(0.88 + r.skill * 0.12, 0.9, 1),
     spec,
   };
 }
@@ -64,9 +74,9 @@ export function aiInput(w, r, dt) {
 
   let act = 0;
   if (r.attackCd <= 0 && r.stamina > 42) {
-    const rival = nearestRival(w, r, 3.6);
+    const rival = nearestRival(w, r, TUNE.reachFront);
     // 身后贴上来的也要打——原版里最经典的画面就是"回头一拳把追上来的踹翻"。
-    const behind = rival ? null : nearestBehind(w, r, 3.4);
+    const behind = rival ? null : nearestBehind(w, r, TUNE.reachBack);
     // 每秒大约一次挥拳的念头；真正出不出手还要看旁边有没有人（`attack` 里判定）。
     // 原来这里是每秒九次，机器人于是变成了一台永动的打桩机。
     const prey = rival || behind;
@@ -83,8 +93,20 @@ export function aiInput(w, r, dt) {
     }
   }
 
-  const nos = r.nitroCd <= 0 && !threat && r.v > spec.vmax * 0.72 && random(w, 0, 1) < 2.4 * dt;
+  // 氮气：跑开了才舍得捏；**落后 60 米以上就改成"咬住"**——那是橡皮筋，也是
+  // "路上永远有人"的保证。它只在落后时生效，所以领先的成就感一分没少。
+  const chase = leaderZ(w) - r.z > 60;
+  const nos = r.nitroCd <= 0 && !threat
+    && (chase || r.v > spec.vmax * 0.72)
+    && random(w, 0, 1) < (chase ? 6 : 2.4) * dt;
   return { th, br, st, act, nos };
+}
+
+/** 场上跑在最前面的那台车在哪（米）。橡皮筋只看这一个数，不看名次——名次是结算的事。 */
+function leaderZ(w) {
+  let z = -Infinity;
+  for (const r of w.racers) if (r.z > z) z = r.z;
+  return z;
 }
 
 /**
@@ -178,13 +200,18 @@ function chooseSide(w, r, threat) {
   return prefer;
 }
 
-/** 正前方最近的对手（前打的目标）。窗口和 `punchTarget` 的向前一支对齐。 */
+/**
+ * 正前方最近的对手（前打的目标）。
+ *
+ * 窗口**必须**跟 `punchTarget` 的向前一支读同一张表（`TUNE`）。写成常数的话，
+ * 调完手感就会出现这种最难查的偏差：人打得着的距离，机器人"看不见"。
+ */
 function nearestRival(w, r, range) {
   for (const o of w.racers) {
     if (o === r || o.state === "wreck") continue;
     const dz = o.z - r.z;
-    if (dz < -0.8 || dz > range) continue;
-    if (Math.abs(o.x - r.x) > 1.75) continue;
+    if (dz < -TUNE.reachSide || dz > range) continue;
+    if (Math.abs(o.x - r.x) > TUNE.reachX) continue;
     return o;
   }
   return null;
@@ -196,8 +223,8 @@ function nearestBehind(w, r, range) {
   for (const o of w.racers) {
     if (o === r || o.state === "wreck") continue;
     const dz = o.z - r.z;
-    if (dz < -range || dz > 0.8) continue;
-    if (Math.abs(o.x - r.x) > 1.75) continue;
+    if (dz < -range || dz > TUNE.reachSide) continue;
+    if (Math.abs(o.x - r.x) > TUNE.reachX) continue;
     if (dz > bestDz) { best = o; bestDz = dz; }
   }
   return best;

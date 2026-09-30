@@ -50,6 +50,15 @@ export const S = {
   keys: new Set(),
   touch: { steer: 0, throttle: 0, brake: 0, nitro: 0 },
   actions: 0,                   // 待发出的一次性动作位（位掩码）：1 前打、2 回身打、4 换家伙
+  /**
+   * **冷却中按下、还没兑现的那一拳**：`{ act, until }`。
+   *
+   * 没有它的时候，胳膊还在收的时候按 J 就等于没按——服务端一句"冷却中"，
+   * 玩家那一下就被吞了。线上实测按 21 次 J 里有 7 次**一点回音都没有**，那不是
+   * "你打空了"，是"你按了，游戏没理你"：两种感觉差得很远。现在这一票先记下来，
+   * 胳膊一能动就立刻兑现（见 `input.mjs` 的 `pumpActions`）。
+   */
+  actWait: null,
   seq: 0,
   lastSentAt: 0,
   lastPingAt: 0,

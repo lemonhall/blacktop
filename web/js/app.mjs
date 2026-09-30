@@ -12,7 +12,7 @@
 
 import { DT } from "../../sim/constants.mjs";
 import { S } from "./state.mjs";
-import { attachInput, bindTouch, readControls } from "./input.mjs";
+import { attachInput, bindTouch, pumpActions, readControls } from "./input.mjs";
 import { buildView } from "./view.mjs";
 import { stepPredict } from "./predict.mjs";
 import { flushCmd, frameInput, initCmds, noteTick } from "./cmd.mjs";
@@ -58,6 +58,8 @@ function tickArena(delta, now) {
 
   const me = S.predictMe;
   if (me) {
+    // 上一格还在收着的胳膊，这一帧说不定能动了——先把记着的那一拳兑现。
+    pumpActions(S, now);
     const controls = readControls(S);
     // `act` 是待发出的动作位（1 前打 / 2 回身打 / 4 换家伙）。它同时喂给本地预测
     // 与画面：判定在服务端，但"我的胳膊什么时候出去"必须本帧就有反应，否则每一下

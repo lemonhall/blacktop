@@ -145,16 +145,20 @@ test("空手也有一行数值：`statsOf`/`heldWeapon` 不返回 undefined", ()
 });
 
 test("够得多远来自那一列：空手够不着的地方，铁链够得着", () => {
-  const bare = duel(0.5, 4.6);
-  assert.equal(attack(bare.w, bare.a, 1), false, "四米六之外，空手够不着");
+  // 距离由 `TUNE.reachFront` 推出来，不写死：这条测试的判据是"窗口随家伙变长"，
+  // 不是"窗口恰好是四米六"。两个距离分别落在空手窗口外、铁链窗口内。
+  const far = TUNE.reachFront + 0.8;
+  const far2 = TUNE.reachFront + 1.6;
+  const bare = duel(0.5, far);
+  assert.equal(attack(bare.w, bare.a, 1), false, "空手够不着那一段");
   assert.ok(bare.w.events.some(e => e.k === "whiff"));
 
-  const chain = duel(0.5, 4.6);
+  const chain = duel(0.5, far);
   giveWeapon(chain.a, weaponIndex("chain"));
   assert.equal(attack(chain.w, chain.a, 1), true, "换成铁链就够得着了");
   assert.ok(chain.b.stamina < 100);
 
-  const mace = duel(0.5, 5.6);
+  const mace = duel(0.5, far2);
   giveWeapon(mace.a, weaponIndex("mace"));
   assert.equal(attack(mace.w, mace.a, 1), true, "流星锤比铁链还远一截");
 });

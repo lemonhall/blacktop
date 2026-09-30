@@ -97,7 +97,9 @@ test("大运只能被前打踢飞：回头一脚踢不到（否则'什么时候�
   const a = w.racers[0];
   a.x = 0; a.z = 1000; a.v = 30;
   const truck = spawnTraffic(w, a.z + 100, "dayun");
-  truck.dir = -1; truck.x = a.x; truck.z = a.z + 6; truck.v = 26;
+  // 摆成"迎面开过来、车头离我还有将近十米"——这正是判定的判据所在：量的是**车面**，
+  // 不是车身中心。旧写法把车放在六米外，对一台 16.5 米的半挂来说那已经在它肚子里了。
+  truck.dir = -1; truck.x = a.x; truck.z = a.z + 18; truck.v = 26;
   assert.ok(kickTarget(w, a), "对向大运确实在出脚窗口里");
   assert.equal(attack(w, a, -1), false, "回身打踢不到它");
   assert.equal(truck.state, "run", "大运还在路上");
@@ -134,8 +136,8 @@ test("迎面来的大运可以被踢飞：加钱、回体力、大运飞出去",
   a.x = 0;
   const truck = spawnTraffic(w, a.z + 100, "dayun");
   assert.equal(truck.kind, "dayun");
-  truck.dir = -1; truck.x = 0; truck.z = a.z + 6; truck.v = 26;
-  assert.ok(kickTarget(w, a), "六米外的对向大运应该进入出脚窗口");
+  truck.dir = -1; truck.x = 0; truck.z = a.z + 18; truck.v = 26;
+  assert.ok(kickTarget(w, a), "车头还在八米外的对向大运应该进入出脚窗口");
   const cash = a.cash, st = a.stamina - TUNE.attackCost;
   a.attackCd = 0;
   assert.equal(attack(w, a), true);
