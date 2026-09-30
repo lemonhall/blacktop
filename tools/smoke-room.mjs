@@ -168,6 +168,15 @@ export async function runRoom() {
   check("世界持续推进（tick 单调递增）", latest.tk > first.tk, `tick ${first.tk} → ${latest.tk}`);
 
   // 压车：一条 st=-1 的命令打完，x 应当往左偏。赛车手感的核心就是这一条链路。
+  // 先把车压回路面中间——上一段可能已经把它甩到左边的极限上了，那样再往左压
+  // 压不动，量到的就不是"压车有没有效"，而是"它本来就在最左边"。
+  for (let i = 0; i < 18; i++) {
+    sq++;
+    host.send({ t: "in", sq, th: 1, br: 0, st: 1, nos: 0, act: 0, n: 3 });
+    await sleep(35);
+    const frame = await host.next(m => m.t === "s" && m.tk > latest.tk, 1200).catch(() => null);
+    if (frame) latest = frame;
+  }
   const xBefore = mineIn(latest, roster, playerId).x;
   for (let i = 0; i < 30; i++) {
     sq++;
