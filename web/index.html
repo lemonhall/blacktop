@@ -243,15 +243,19 @@
             <strong id="hudName">车手</strong>
             <em class="gear-badge"><b id="hudGear">1</b>挡</em>
           </span>
-          <span class="dash-gap">与头名 <b id="hudGap">领跑</b></span>
-          <span class="dash-rival"><em id="hudRivalTag">前车</em> <b id="hudRival">独自领跑</b></span>
+          <!-- 名次与前车挤在同一行：这一块面板压在画面下缘，**每多一行就多挡一点路**。
+               两块牌子的说明也一起塞进灯那一行——它只有六个字的宽度，正好够。 -->
+          <span class="dash-line">
+            <span class="dash-gap">与头名 <b id="hudGap">领跑</b></span>
+            <span class="dash-rival"><em id="hudRivalTag">前车</em> <b id="hudRival">独自领跑</b></span>
+          </span>
           <!-- 距离灯：够不够得着是这套玩法里唯一需要"看准时机"的判断，而窗口只有
                零点几秒——不写出来，玩家就只能在被打下去之后才明白自己错过了什么。 -->
           <div class="range-row">
             <b id="hudRangeBack" class="range-chip">◀ 后</b>
+            <span class="range-tip">亮＝够得着</span>
             <b id="hudRangeFwd" class="range-chip">前 ▶</b>
           </div>
-          <span class="range-tip">亮＝够得着 · 靠左/靠右＝往那边蹭一下</span>
           <div id="hudBelt" class="belt-row"></div>
           <div class="sta-row nos"><span>氮气</span><i class="sta-track"><b id="hudNos"></b></i></div>
         </div>

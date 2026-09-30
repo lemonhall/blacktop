@@ -98,7 +98,9 @@ function resolve(w, r, dir, aim, spec) {
   if (aim.kind === "car") {
     const car = aim.target;
     const cash = (VEHICLES[car.kind] || {}).cash || 400;
-    fling(w, car, Math.sign(car.x - r.x) || 1);
+    // 把出手那一刻的速度一起递过去：飞出去的初速要**跟得上踹它的人**，否则那台车
+    // 会立刻掉到画面后面去，玩家看不见自己踹飞了什么（见 `traffic.fling`）。
+    fling(w, car, Math.sign(car.x - r.x) || 1, r.v);
     r.kills++;
     r.cash += cash;
     r.stamina = Math.min(STAMINA_MAX, r.stamina + 22);

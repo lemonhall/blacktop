@@ -102,16 +102,16 @@
  */
 .hud-dash {
   position: absolute; left: 50%; bottom: 0; transform: translateX(-50%);
-  display: grid; grid-template-columns: 132px minmax(196px, 286px) 132px;
-  align-items: end; justify-items: center; gap: 10px;
-  width: min(648px, 90vw);
-  padding: 34px 30px 8px;
+  display: grid; grid-template-columns: 96px minmax(176px, 248px) 96px;
+  align-items: end; justify-items: center; gap: 8px;
+  width: min(548px, 86vw);
+  padding: 18px 22px 6px;
   /*
    * 半径的横轴给到 50%（= 面板半宽）、纵轴给 62px，上沿就成了一条**完整的椭圆弧**：
    * 中间最高、两侧沉下去，两个角不再有"直边接圆角"的破绽。这正是真车那块导流罩
    * （cowl）的形状，也是 3DO 那版仪表舱的轮廓。
    */
-  border-radius: 50% 50% 0 0 / 62px 62px 0 0;
+  border-radius: 50% 50% 0 0 / 40px 40px 0 0;
   background: radial-gradient(122% 92% at 50% 106%, #2c3647 0%, #141b27 42%, #080c13 72%, #04060a 100%);
   box-shadow:
     inset 0 2px 0 #ffffff2b,
@@ -123,21 +123,32 @@
 /* 弧顶那道镀铬边就交给 `inset` 阴影——它跟着圆角走，比一条拉直的亮线可信得多。 */
 /* 舱体两侧的黑色侧板：把两根表"焊"在壳里，而不是浮在上面 */
 .hud-dash::after {
-  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 46px;
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 34px;
   border-radius: 0 0 4px 4px;
   background: linear-gradient(180deg, #00000000, #04060bdd 44%, #02040a);
 }
 .dash-block {
   position: relative; z-index: 1;
-  display: flex; flex-direction: column; align-items: center; gap: 5px; width: 126px;
+  display: flex; flex-direction: column; align-items: center; gap: 3px; width: 94px;
   /* 两只表**探出**导流罩的上沿。实机照片里表的铬圈就是压在罩子上边的，
      表缩在罩子里反而像贴了一张贴纸。 */
-  margin-top: -24px;
+  margin-top: -18px;
 }
 .dash-block canvas {
-  display: block; width: 118px; height: 118px;
+  display: block; width: 84px; height: 84px;
   filter: drop-shadow(0 6px 10px #000000cc);
 }
+/*
+ * **高度是这块面板的第一预算。**
+ *
+ * 它压在画面下缘，而相机是追尾视角——被挡住的那一条，正好是眼前的路。实测
+ * （1280×800）旧尺寸是 **206px**，屏幕高的四分之一；线上原话是"占用了太多高度，
+ * 很恶心，挡住了"。后来量出它和另一件事故是叠加的：踹飞的车本来会往画面下缘
+ * 滑走，被这块板一挡，连那半秒都看不全了。
+ *
+ * 现在整块压到 130px 上下：表盘 118→84、上弧 62→40、两侧与中缝一起收窄。
+ * 宁可字小一号，也不能把路挡掉。
+ */
 /*
  * 中段那排指示灯：真车的仪表舱里一定有，而且平时永远是"暗着的红"——会亮的只有自己，
  * 那它就没有信息量。所以这一排是纯装饰；但没有它，中间那块会空得像块补丁。
@@ -151,25 +162,25 @@
 /* 表盘下面那块**液晶**：老表的读数就是这种绿字黑屏，比一排灰字像仪表得多 */
 .dash-speed {
   display: flex; align-items: baseline; gap: 4px;
-  padding: 0 8px 2px; border-radius: 3px;
+  padding: 0 6px 1px; border-radius: 3px;
   border: 1px solid #2b3b34;
   background: linear-gradient(180deg, #0e1a13, #060d09);
   box-shadow: inset 0 0 10px #46ff9a1f, 0 2px 6px #000000aa;
-  font-size: 8px; letter-spacing: 1.3px; color: #4fd489;
+  font-size: 7px; letter-spacing: 1.1px; color: #4fd489;
   font-variant-numeric: tabular-nums;
 }
 .dash-speed b {
-  font-size: 18px; font-style: normal; color: #92ffbe;
+  font-size: 15px; font-style: normal; color: #92ffbe;
   text-shadow: 0 0 9px #46ff9a80;
 }
 .dash-center {
   position: relative; z-index: 1;
-  display: flex; flex-direction: column; align-items: center; gap: 5px;
-  padding-bottom: 10px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding-bottom: 6px; text-align: center;
 }
 /* 名字旁边那个挡位牌：转速表上的针为什么在跳，看它一眼就明白了。 */
 .dash-name { display: flex; align-items: center; gap: 6px; }
-.dash-name strong { font-size: 16px; font-style: italic; letter-spacing: .5px; }
+.dash-name strong { font-size: 14px; font-style: italic; letter-spacing: .5px; }
 .gear-badge {
   display: inline-flex; align-items: baseline; gap: 1px; padding: 0 5px 1px;
   border-radius: 3px; border: 1px solid #2b3b34;
@@ -177,11 +188,12 @@
   color: #4fd489; font-size: 8px; font-style: normal; letter-spacing: .5px;
 }
 .gear-badge b {
-  font-size: 13px; color: #92ffbe;
+  font-size: 12px; color: #92ffbe;
   text-shadow: 0 0 8px #46ff9a66; font-variant-numeric: tabular-nums;
 }
 .dash-gap,
 .dash-rival { font-size: 9px; letter-spacing: .8px; color: var(--muted); }
+.dash-line { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
 .dash-rival em { font-style: normal; }
 .dash-gap b,
 .dash-rival b { color: var(--text); font-size: 11px; }
@@ -189,7 +201,7 @@
 .sta-row { display: flex; align-items: center; gap: 6px; width: 100%; font-size: 8px; color: var(--muted); }
 .sta-row > span { width: 34px; flex: 0 0 auto; }
 .sta-row > em { font-style: normal; font-variant-numeric: tabular-nums; color: #cfe0ee; }
-.sta-track { flex: 1; height: 6px; border-radius: 4px; background: #ffffff14; overflow: hidden; }
+.sta-track { flex: 1; height: 5px; border-radius: 4px; background: #ffffff14; overflow: hidden; }
 .sta-track > b {
   display: block; height: 100%; width: 100%; border-radius: 4px;
   background: linear-gradient(90deg, #ff6a7a, #ffd23f, #7cf7a0);
@@ -204,12 +216,12 @@
    中央那一列、紧贴氮气条上面——和"我还剩多少"排在同一条视线高度上。 */
 .belt-row {
   display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
-  gap: 4px; margin-top: 2px; min-height: 15px; max-width: 190px;
+  gap: 4px; margin-top: 1px; min-height: 13px; max-width: 190px;
 }
 .belt-chip {
   padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line2);
   background: #ffffff0f; color: var(--muted);
-  font-size: 9px; font-weight: 700; font-style: normal; letter-spacing: .3px;
+  font-size: 8px; font-weight: 700; font-style: normal; letter-spacing: .3px;
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .belt-chip.on {
@@ -226,15 +238,15 @@
  */
 .range-row {
   display: flex; align-items: center; justify-content: center;
-  gap: 6px; max-width: 200px;
+  gap: 5px; max-width: 250px;
 }
 .range-chip {
-  padding: 1px 8px; border-radius: 3px; border: 1px solid var(--line);
+  padding: 1px 7px; border-radius: 3px; border: 1px solid var(--line);
   background: #ffffff0a; color: #7f8ea3;
-  font-size: 10px; font-weight: 700; font-style: normal; letter-spacing: .4px;
+  font-size: 9px; font-weight: 700; font-style: normal; letter-spacing: .4px;
   white-space: nowrap; transition: color 90ms linear, background-color 90ms linear;
 }
-.range-tip { font-size: 8px; letter-spacing: .2px; color: #5d6b7e; }
+.range-tip { font-size: 7px; letter-spacing: .2px; color: #5d6b7e; }
 .range-chip.on.car {
   background: var(--amber); border-color: var(--amber); color: #201203;
   box-shadow: 0 0 12px #ffb03a66;
@@ -245,7 +257,7 @@
 .range-chip.on.right { border-color: #ffb03a80; color: #ffc978; }
 
 .progress-rail {
-  position: absolute; left: 50%; bottom: 190px; transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: 136px; transform: translateX(-50%);
   width: min(560px, 66vw); height: 4px; border-radius: 3px;
   background: #ffffff1c; overflow: visible;
 }

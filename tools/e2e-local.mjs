@@ -193,6 +193,17 @@ async function main() {
     steps.push(["HUD 有名次榜、计时与播报位（不是一块空画布）",
       hud.ranks.length > 0 && hud.hudTimer !== "00:00",
       `名次「${hud.ranks.slice(0, 40)}」· 计时 ${hud.hudTimer} · 与头名 ${hud.hudGap}`]);
+    // 仪表舱压在画面下缘，而相机是追尾视角——它每高一点，挡掉的就是眼前那条路
+    // （线上原话："占用了太多高度，很恶心，挡住了"）。所以这条不钉像素值，钉它
+    // 占了几成屏高、上沿落在第几行；换个窗口大小也照样成立。
+    const dash = await host.evaluate(() => {
+      const r = document.querySelector(".hud-dash").getBoundingClientRect();
+      return { h: r.height, top: r.top, vh: innerHeight };
+    });
+    steps.push(["仪表舱只占屏幕下缘那一条（不挡眼前的路）",
+      dash.h / dash.vh <= 0.22 && dash.top / dash.vh >= 0.72,
+      `高 ${Math.round(dash.h)}px（${(dash.h / dash.vh * 100).toFixed(1)}% 屏高）`
+      + `· 上沿在第 ${Math.round(dash.top / dash.vh * 100)}% 行`]);
 
     // ---------------------------------------------------------------- 12. 邀请链接：对局中补位
     // 人数上限是 2（这是赛制的一部分：2 真人 + 13 机器人 = 15 台），所以先请访客
