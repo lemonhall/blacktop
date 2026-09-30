@@ -114,7 +114,7 @@ export function drawBox(ctx, w, h, paint, dir, dmg, tall) {
   else plate(ctx, 0.42, 0.24);
   for (const side of [-1, 1]) {
     lamp(ctx, side * w * 0.42, 0.56, 0.28, 0.17, dir);
-    bloom(ctx, side * w * 0.42, 0.64, oncoming ? 0.95 : 0.6,
+    bloom(ctx, side * w * 0.42, 0.64, oncoming ? 0.58 : 0.4,
       oncoming ? "rgba(255,246,207,.45)" : "rgba(255,74,90,.3)", 0.8);
   }
 }
@@ -173,7 +173,7 @@ export function drawBus(ctx, w, h, paint, dir, dmg) {
   plate(ctx, 0.4, 0.26);
   for (const side of [-1, 1]) {
     lamp(ctx, side * w * 0.42, 0.54, 0.3, 0.16, dir);
-    bloom(ctx, side * w * 0.42, 0.62, oncoming ? 1 : 0.55,
+    bloom(ctx, side * w * 0.42, 0.62, oncoming ? 0.6 : 0.4,
       oncoming ? "rgba(255,246,207,.42)" : "rgba(255,74,90,.28)", 0.75);
   }
 }

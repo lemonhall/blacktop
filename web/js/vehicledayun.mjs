@@ -138,7 +138,7 @@ export function drawDayun(ctx, w, h, dmg = 0) {
     } else {
       lamp(ctx, x, 0.61, 0.44, 0.22, -1);
     }
-    bloom(ctx, x, 0.72, side > 0 && k > 0.45 ? 0.2 : 1.1, "rgba(255,246,207,.5)", 0.9);
+    bloom(ctx, x, 0.72, side > 0 && k > 0.45 ? 0.16 : 0.62, "rgba(255,246,207,.5)", 0.9);
     ctx.fillStyle = "#ffab2e";
     roundRect(ctx, side * (W2 - 0.16) - 0.1, 0.63, 0.2, 0.16, 0.03);
   }

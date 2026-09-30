@@ -9,7 +9,7 @@
  * 约定一致（道具贴图是 `translate(宽/2, 高)` + `scale(PX, -PX)` 之后画的）。
  */
 
-import { clamp01, hgrad, poly, shade, vgrad } from "./art.mjs";
+import { clamp01, hgrad, poly, shade, vgrad, withAlpha } from "./art.mjs";
 import { hash2 } from "../../sim/rng.mjs";
 
 /**
@@ -208,10 +208,15 @@ export function bulb(ctx, x, y, r, color, lit = true, strength = 1) {
     // 光晕**必须**是渐变。上一版是一颗 alpha 0.22 的实心圆：边缘一刀切下去，
     // 夜里看就是一片贴在空中的灰饼（工地探照灯那两盏尤其刺眼）。
     // 渐变让亮度在半径上自然衰减，边缘落在 alpha≈0 上，才叫"光"。
+    // 停靠点同样不许有"平台"：0.22 与 0.5 两档之间必须真的在掉，否则一盏
+    // 远处的路灯会在天上留下一枚圆币（夜里路杆本身几乎看不见，就剩这枚币）。
     const g = ctx.createRadialGradient(x, y, 0, x, y, r * 3.2);
-    g.addColorStop(0, color);
-    g.addColorStop(0.22, color);
-    g.addColorStop(1, "rgba(0,0,0,0)");
+    const c = k => withAlpha(color, k);
+    g.addColorStop(0, c(1));
+    g.addColorStop(0.14, c(0.68));
+    g.addColorStop(0.42, c(0.24));
+    g.addColorStop(0.72, c(0.07));
+    g.addColorStop(1, c(0));
     ctx.save();
     ctx.globalAlpha = 0.5 * strength;
     ctx.fillStyle = g;

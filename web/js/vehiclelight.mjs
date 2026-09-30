@@ -58,7 +58,7 @@ export function drawCar(ctx, w, h, paint, dir, dmg) {
   damagePass(ctx, w, h, dmg);
   for (const side of [-1, 1]) {
     lamp(ctx, side * w * 0.4, 0.5, 0.34, 0.19, dir);
-    bloom(ctx, side * w * 0.4, 0.6, oncoming ? 0.9 : 0.7,
+    bloom(ctx, side * w * 0.4, 0.6, oncoming ? 0.55 : 0.44,
       oncoming ? "rgba(255,246,207,.5)" : "rgba(255,74,90,.34)", 0.85);
   }
   plate(ctx, 0.4, 0.19);
@@ -130,8 +130,8 @@ export function drawPolice(ctx, w, h, paint, dir, dmg) {
   roundRect(ctx, -w * 0.28, h * 1.0, w * 0.26, 0.1, 0.02);
   ctx.fillStyle = "#3b8bff";
   roundRect(ctx, w * 0.02, h * 1.0, w * 0.26, 0.1, 0.02);
-  bloom(ctx, -w * 0.16, h * 1.06, 0.9, "rgba(255,59,78,.55)", 1.1);
-  bloom(ctx, w * 0.16, h * 1.06, 0.9, "rgba(59,139,255,.55)", 1.1);
+  bloom(ctx, -w * 0.16, h * 1.06, 0.5, "rgba(255,59,78,.55)", 1.1);
+  bloom(ctx, w * 0.16, h * 1.06, 0.5, "rgba(59,139,255,.55)", 1.1);
   // 侧面的条纹：远处看不出灯的时候，靠这两道白杠认它
   ctx.fillStyle = "rgba(240,246,255,.85)";
   for (const side of [-1, 1]) ctx.fillRect(side * W2 - (side > 0 ? 0.12 : 0), h * 0.36, 0.12, h * 0.34);

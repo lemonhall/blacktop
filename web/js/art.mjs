@@ -172,16 +172,48 @@ export function ring(ctx, x, y, r, width, style) {
   ctx.stroke();
 }
 
-/** 一粒光晕。夜里所有"在发光"的东西都用它，位置与半径都在米坐标系里。 */
+/**
+ * 把一个颜色（`#rrggbb` 或 `rgba(r,g,b,a)`）的整体不透明度乘上 `k`。
+ *
+ * 光晕要的是"一串同样颜色、不同浓淡"的停靠点，而调用方递进来的颜色自带 alpha
+ * （`rgba(255,246,207,.5)`），所以必须能**读出现有的 alpha 再改**。
+ */
+export function withAlpha(color, k) {
+  if (typeof color !== "string") return color;
+  const hex = /^#([0-9a-f]{6})$/iu.exec(color);
+  if (hex) {
+    const [r, g, b] = hex2rgb(color);
+    return `rgba(${r},${g},${b},${clamp01(k).toFixed(3)})`;
+  }
+  const m = /^rgba?\(([^)]+)\)$/iu.exec(color);
+  if (!m) return color;
+  const parts = m[1].split(",").map(v => v.trim());
+  const a = parts.length > 3 ? Number(parts[3]) : 1;
+  return `rgba(${parts.slice(0, 3).join(",")},${clamp01(a * k).toFixed(3)})`;
+}
+
+/**
+ * 一粒光晕。夜里所有"在发光"的东西都用它，位置与半径都在米坐标系里。
+ *
+ * **亮度必须从圆心一路往外掉**。上一版前 45% 的半径是**平的**（`addColorStop(0)`
+ * 与 `(0.45)` 同一个颜色），再加一个突然开始的衰减——半径一大就不是"光"了，
+ * 而是一张边缘微柔的圆饼。栽在这上面的最大一件是**迎面的大运**：它的远光半径
+ * 1.1 米，开到你面前时两盏灯变成两块直径两米多的暖白灰饼压在路面上（车本身反而
+ * 被盖住）。现在的停靠点是 1 → 0.62 → 0.22 → 0，衰减从圆心就开始，边缘落在 0。
+ */
 export function bloom(ctx, x, y, r, color, strength = 1) {
-  const g = ctx.createRadialGradient(x, y, 0, x, y, Math.max(1e-3, r));
-  g.addColorStop(0, color);
-  g.addColorStop(0.45, color);
-  g.addColorStop(1, "rgba(0,0,0,0)");
+  const rr = Math.max(1e-3, r);
+  const g = ctx.createRadialGradient(x, y, 0, x, y, rr);
+  const c = k => withAlpha(color, k);
+  g.addColorStop(0, c(1));
+  g.addColorStop(0.18, c(0.72));
+  g.addColorStop(0.45, c(0.28));
+  g.addColorStop(0.72, c(0.08));
+  g.addColorStop(1, c(0));
   ctx.save();
   ctx.globalAlpha = clamp01(strength);
   ctx.beginPath();
-  ctx.arc(x, y, Math.max(1e-3, r), 0, Math.PI * 2);
+  ctx.arc(x, y, rr, 0, Math.PI * 2);
   ctx.fillStyle = g;
   ctx.fill();
   ctx.restore();
