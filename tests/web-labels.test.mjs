@@ -7,6 +7,8 @@
  *     所有人的名字都会往上飘半行——这种错很容易被当成"美术改过"而漏掉。
  *   - **没有字形度量就现画**：`node --test` 里的假上下文没有 `measureText`，
  *     量不出宽度就烘不出来，这时候必须老老实实现画，而不是画一块空白。
+ *   - **量宽度要用对字体**：线上那句"MISS 的 M 和 S 像被竖着切开"，根因就是
+ *     `measureText` 量的是上下文**当前**的字体，而贴图那一步从来没设过它。
  */
 
 import test from "node:test";
@@ -95,6 +97,49 @@ test("量不出宽度就现画：没有 document / 没有 measureText 时不许�
 });
 
 /**
+ * **"MISS 的 M 和 S 像被竖着切开"**——线上原话。
+ *
+ * `measureText` 量的是上下文**当前**的字体，而贴图那一步以前从来没设过字体：画布刚
+ * 建好时它是 `10px sans-serif`，于是不管要烘的是多大的字，量出来的永远是"10 像素
+ * 下那一行"。贴图比字形窄一大截，`fillText` 画到画布外面的部分被直接切掉——左右各
+ * 少一块，看起来就是被竖着划了两刀。字号越大切得越狠。
+ */
+test("量宽度用的是要烘的那一号字体：贴图不许比字形窄", () => {
+  const made = [];
+  const prev = globalThis.document;
+  globalThis.document = { createElement: () => { const c = fakeCanvas(); made.push(c); return c; } };
+  clearLabels();
+  try {
+    const spy = spyCtx();
+    // 真浏览器的 `measureText` 就是认 `ctx.font` 的：字号翻倍，量出来的宽度也翻倍。
+    spy.ctx.measureText = function (text) {
+      const px = Number(/(\d+(?:\.\d+)?)px/.exec(this.font || "")?.[1] || 10);
+      return { width: text.length * px * 0.6 };
+    };
+    label(spy.ctx, 0, 0, "MISS", "#dce9ff", 44);
+    assert.equal(made.length, 1, "应该烘了一张");
+    // 44 像素下 "MISS" 约 4 × 44 × 0.6 ≈ 106 像素宽，留白只加几个像素。
+    assert.ok(made[0].width > 100, `贴图只有 ${made[0].width} 像素宽，字形会被左右切掉`);
+  } finally {
+    globalThis.document = prev;
+    clearLabels();
+  }
+});
+
+test("弹入放大只放大目标矩形，不会为每一个尺寸重新烘一张图", () => {
+  const { made, spy, done } = rig();
+  try {
+    label(spy.ctx, 100, 200, "砰!", "#ffe27a", 20, 1.4);
+    assert.equal(made.length, 1, "放大不该再烘一张——跳字是跟着距离连续变大的");
+    const draw = spy.ops.filter(([n]) => n === "drawImage").at(-1);
+    assert.ok(draw[1][3] > made[0].width, "目标宽度要真的放大");
+    const before = made.length;
+    label(spy.ctx, 100, 200, "砰!", "#ffe27a", 20, 1);
+    assert.equal(made.length, before, "回到原大小仍然打同一张图");
+  } finally { done(); }
+});
+
+/**
  * 跳字的字号必须封顶。踩过的坑：踹飞的那台车就贴在我车头前面，跳字按 ppm 一路
  * 长到三百多像素——一个字铺满半个屏幕，比当时发生的事还大。
  */
@@ -104,4 +149,9 @@ test("跳字跟着距离长，但到顶就停：贴脸的东西不许把字撑�
   assert.equal(floaterSize(400, true), 44, "大字号的赏金封顶 44 像素");
   assert.ok(floaterSize(900, true) === floaterSize(400, true), "再近也不许继续长");
   assert.ok(floaterSize(20, true) > floaterSize(20, false), "赏金那一档本来就该更大");
+  // 第三档（提示语 56）与第四档（只给 MISS 的 68）也要各自封顶，而且彼此不同：
+  // "再近也不许继续长"这条对每一档都成立，漏掉哪一档，那一档就会在贴脸时爆掉。
+  assert.equal(floaterSize(400, 2), 56, "提示语封顶 56 像素");
+  assert.equal(floaterSize(400, 3), 68, "MISS 那一档封顶 68 像素");
+  assert.ok(floaterSize(900, 3) === floaterSize(400, 3), "MISS 再近也不许继续长");
 });

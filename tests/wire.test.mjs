@@ -61,10 +61,22 @@ test("车手与车流都能还原成渲染层好用的对象", () => {
   const w = run(build({ seed: 9 }), seconds(20));
   const snap = encodeSnapshot(w, 0);
   const roster = decodeMap(encodeMap(w)).roster;
-  const r = decodeRacer(snap.r[0], roster);
+  // 别写死 `snap.r[0]`：伤害调高之后，20 秒里谁被撂倒都有可能。
+  // 这条测的是"解码出来的对象渲染层能用"，不是"0 号一定还在骑"。
+  const riding = snap.r.find(x => x.st === 1);
+  assert.ok(riding, "20 秒里应该还有人在骑");
+  const r = decodeRacer(riding, roster);
   assert.equal(r.state, "ride");
   assert.ok(r.name.length > 0, "名字要从名册里补回来");
   assert.ok(r.kmh > 0);
+
+  const downed = snap.r.find(x => x.st === 0);
+  if (downed) {
+    const d = decodeRacer(downed, roster);
+    assert.equal(d.state, "wreck", "撂倒态要解得出 wreckKind，不然表现层不知道该播哪种摔");
+    assert.equal(typeof d.wreckKind, "string");
+  }
+
   assert.ok(snap.tr.length > 0, "路上应该有车");
   const v = decodeTraffic(snap.tr[0]);
   assert.ok(v.kind && v.z > 0 && (v.dir === 1 || v.dir === -1));

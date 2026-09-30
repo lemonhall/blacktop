@@ -20,16 +20,32 @@ import { drawPickup } from "./weaponsart.mjs";
 import { CRITTERS } from "../../sim/critters.mjs";
 import { drawOverlays } from "./overlays.mjs";
 import { drawPuff, drawSpark, variantOf } from "./particles.mjs";
+import { drawHitStar } from "./hitmark.mjs";
+import { shakeOffset } from "./camshake.mjs";
 
 /**
  * 跳字的字号：**按距离长，但封顶**。
  *
  * 跳字（`+400`、`悬赏 1500`）挂在"那一件东西"上，而那件东西常常就贴在我车头前面
  * 两三米——刚踹飞的那台车、刚捡起来的那件家伙。那一处的 ppm 能到三四百，字号跟着
- * 长就是一个字铺满半个屏幕，比当时发生的事还大。所以到 28/44 像素就到顶。
+ * 长就是一个字铺满半个屏幕，比当时发生的事还大。所以每一档都要封顶。
+ *
+ * **三档，不是两档。** 上一版只有"普通"和"赏金"两级，于是 `MISS` 只能挤在普通那一
+ * 档里——而它是全场唯一一句"你刚才那一下什么都没碰到"的判决，最该被看见。线上原话
+ * 就是"miss 有看到，但很容易忽略掉"。所以 `big` 现在收四个值：
+ *   `false` 普通跳字（28 像素封顶）、`true` 赏金/伤害那一档（44）、`2` 提示语（56）、
+ *   `3` 只有 MISS 用（68，配 `pop` 进场能到 99）。
+ *
+ * 为什么给 MISS 单开一档而不是把 `2` 调大：`2` 上还挂着"第几圈""击倒!"这些播报，
+ * 它们一局只来几次、字大一点是好事；MISS 是**挨了打才出现**的，混战里一秒能来三条。
+ * 混在一起调，要么播报太吵，要么 MISS 还是被淹没。分开之后各归各的。
  */
+const FLOATER_CAP = [28, 44, 56, 68];
+const FLOATER_K = [0.85, 1.15, 1.35, 1.5];
+
 export function floaterSize(ppm, big) {
-  return Math.min(big ? 44 : 28, (big ? 1.15 : 0.85) * ppm + 8);
+  const tier = big === true ? 1 : big === false || big === undefined ? 0 : Math.max(0, Math.min(3, big | 0));
+  return Math.min(FLOATER_CAP[tier], FLOATER_K[tier] * ppm + 8);
 }
 
 /**
@@ -51,12 +67,10 @@ export function renderGame(ctx, view) {
   const tone = tonesOf(S.mode);
 
   ctx.save();
-  if (S.shake > 0.05) {
-    ctx.translate((Math.random() - 0.5) * S.shake, (Math.random() - 0.5) * S.shake);
-    // 位移之外再拧一点点角度：只有平移的震动看着像画面在"抖"，加上滚转才像
-    // 整台摄像机被人从侧面撞了一下。幅度按像素比例给，换分辨率不会变重。
-    ctx.rotate((Math.random() - 0.5) * S.shake * 0.0009);
-  }
+  // 震屏是**衰减的振荡**，不是随机数——理由见 `camshake.mjs`（一句话：随机噪声在
+  // 视觉上就是"卡顿"的长相，而挨一下该有的长相是"晃"）。
+  const shake = shakeOffset(S.shakePhase || 0, S.shake || 0);
+  if (shake) { ctx.translate(shake.dx, shake.dy); ctx.rotate(shake.rot); }
   // 天色读的是**赛道**（`maps.mjs` 里的 `sky`），不是房间里的模式名：
   // 一条路的天和地是一对，分开写迟早会出现"沙漠上挂着红杉林的天"。
   const sky = backdrop(S.track.sky || S.mode, W, Math.ceil(cam.horizon) + 2, cam.horizon);
@@ -127,6 +141,13 @@ export function drawFx(ctx, cam, tbl) {
     drawSpark(ctx, cam, tbl, S.track.hillAt, p);
   }
   ctx.globalAlpha = 1;
+  // 命中标记（美漫那一颗星）压在火花**上面**：它是"打实了"这三个字，被自己的火花
+  // 糊掉就白画了。它极短（0.22 秒），所以它是顿挫，不是一直挂在屏幕上的装饰。
+  for (const s of FX.stars) {
+    const q = project(cam, tbl, s.x, worldY(s.z, s.y), s.z);
+    if (!q || q.ppm < 0.25) continue;
+    drawHitStar(ctx, q.sx, q.sy, q.ppm, s.k, s.color, (s.life / s.max) ** 0.7);
+  }
   for (const f of FX.floaters) {
     const q = project(cam, tbl, f.x, worldY(f.z, f.y), f.z);
     if (!q || q.ppm < 0.4) continue;
@@ -134,7 +155,10 @@ export function drawFx(ctx, cam, tbl) {
     // 字号按距离长，但**必须封顶**：跳字是挂在"那一件东西"上的，而它常常就贴在
     // 我车头前面两三米（刚刚踹飞的那台车、刚捡起来的那件家伙），那一处的 ppm 能到
     // 三四百——一个字于是铺满半个屏幕，比当时发生的事还大。
-    label(ctx, q.sx, q.sy, f.text, f.color, floaterSize(q.ppm, f.big));
+    // 跳出来那一下：刚出现的 130 毫秒里大 45%，然后收回原大小。街机与美漫的拟声词
+    // 都是这么进场的——少了它，字只是"多了一行"；有了它，才是"砰"的一声。
+    const pop = 1 + 0.45 * Math.max(0, 1 - (f.age || 0) / 0.13) ** 2;
+    label(ctx, q.sx, q.sy, f.text, f.color, floaterSize(q.ppm, f.big), pop);
   }
   ctx.globalAlpha = 1;
 }
@@ -248,10 +272,19 @@ function drawRacerSprite(ctx, cam, tbl, r, view) {
   // 出拳方向只有我自己这一台能画准：快照里的 `sw` 只带"还剩多久"，回身打的那一
   // 下只有本机知道。别人的胳膊一律按前打画——反正镜头在自己车后面，看不出来。
   const swingBack = me && S.swing > 0 && S.swingBack;
+  /*
+   * 刚挨了一下的人**整车闪一记白**。线上原话："就算踢到了，也没有视觉提醒"。
+   *
+   * 判据用权威端的 `lastHit`（世界时刻）而不是本机猜的：快照里本来就带着它
+   * （`wire.mjs` 的 `hl`），所以两台机器上"谁在闪光"完全一致。窗口 0.45 秒，
+   * 比 `hurtDelay`（0.4）略长一点点——第 0.41 秒允许再挨一下，闪光就得连上。
+   */
+  const since = (S.carTm || 0) - (Number.isFinite(r.lastHit) ? r.lastHit : -99);
+  const flash = since >= 0 ? Math.max(0, 1 - since / 0.45) : 0;
   drawRider(ctx, {
     cx: p.sx, baseY: p.sy, s: p.ppm, palette: r.palette,
     lean: r.lean, swing, swingBack, wreck: r.state === "wreck" ? Math.max(0.2, r.wreck) : 0,
-    nitro: r.nitro, flameSeed: r.id, weapon,
+    nitro: r.nitro, flameSeed: r.id, weapon, flash,
   });
   /*
    * 头顶挂名字：只有真人挂——14 个机器人全挂上就成了一片文字墙。

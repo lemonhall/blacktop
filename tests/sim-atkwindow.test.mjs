@@ -93,9 +93,11 @@ test("窗口只兑现一次：一脚踢飞一台，旁边的车不会被顺手�
   const { w, a } = pair(9);
   const one = spawnTraffic(w, a.z + 400, "car");
   const two = spawnTraffic(w, a.z + 400, "car");
-  for (const v of [one, two]) { v.dir = -1; v.x = a.x; v.v = 20; v.z = a.z + 14; }
+  // 二十米：`kickReach` 是 13，量的又是**近侧车面**（车长 4.6 减去一半），
+  // 所以"够不着"的界线落在 15.3 米上——摆十四米的话，这一脚本来就已经够得着了。
+  for (const v of [one, two]) { v.dir = -1; v.x = a.x; v.v = 20; v.z = a.z + 20; }
   attack(w, a, 1);
-  assert.equal(one.state + two.state, "runrun", "十四米外两台都还够不着");
+  assert.equal(one.state + two.state, "runrun", "二十米外两台都还够不着");
   one.z = a.z + 10;
   stepRacer(w, a, DT, input({}));
   assert.equal(one.state, "flung", "先撞进来的那台飞了");

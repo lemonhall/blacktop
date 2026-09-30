@@ -43,8 +43,28 @@ export function smoke(x, z, y, color = "rgba(180,180,190,.5)", count = 3, size =
   }
 }
 
-export function floater(x, z, y, text, color = "#ffe9a8", big = false) {
-  FX.floaters.push({ x, z, y, text, color, big, life: 1, max: 1 });
+export function floater(x, z, y, text, color = "#ffe9a8", big = false, hold = 1) {
+  // `age` 是给"跳出来"那一下用的（`render.drawFx` 按它放大再收回来）。刚跳出来的
+  // 字比最终大 45%，120 毫秒内收回原大小——街机与美漫的拟声词都是这么出现的。
+  // 少了这一下，字只是"多了一行"，多了这一下，它才是"砰"的一声。
+  //
+  // `hold` 是"它挂在屏幕上多久"。默认 1 秒，MISS 要 1.35——那四个字母是**判决**，
+  // 玩家得有机会从"我刚按了 J"这件事里抬起头来看它一眼。
+  FX.floaters.push({ x, z, y, text, color, big, life: hold, max: hold, age: 0 });
+}
+
+/**
+ * **一颗美漫的星。** 命中/踹飞的那一点炸开：一圈放射线 + 一个多角星芒 + 外圈冲击环。
+ *
+ * 为什么需要它：火花（`burst`）和地面环（`ring`）说的是"有东西亮了"和"这一下多重"，
+ * 但它们都不说"**打实了**"。线上原话是"就算踢到了，也没有视觉提醒"——判定成立了，
+ * 屏幕却没有回答。美漫与当年的街机解决这个问题只有一个办法：把命中那一格的字画出来。
+ *
+ * `k` 是份量（打人 1.0、踹车 1.5、大运 2.2），`life` 极短（0.22 秒）——它是**顿挫**，
+ * 不是特效；长过 0.3 秒就从"打中了"变成"屏幕上有个东西在转"。
+ */
+export function star(x, z, y, k = 1, color = "#fff3c4") {
+  FX.stars.push({ x, z, y, k, color, life: 0.22, max: 0.22 });
 }
 
 /**
@@ -132,17 +152,26 @@ export function stepFx(dt, view) {
   burnWrecks(view, me);
   for (const r of FX.rings) r.t += dt;
   FX.rings = FX.rings.filter(r => r.t < r.max);
+  for (const s of FX.stars) s.life -= dt;
+  FX.stars = FX.stars.filter(s => s.life > 0);
   integrate(FX.sparks, dt, 26);
   integrate(FX.smoke, dt, 2.2);
   FX.sparks = FX.sparks.filter(p => p.life > 0);
   FX.smoke = FX.smoke.filter(p => p.life > 0);
   if (FX.sparks.length > 420) FX.sparks.splice(0, FX.sparks.length - 420);
   if (FX.smoke.length > 300) FX.smoke.splice(0, FX.smoke.length - 300);
-  for (const f of FX.floaters) { f.life -= dt; f.y += dt * 1.6; }
+  for (const f of FX.floaters) { f.life -= dt; f.age += dt; f.y += dt * 1.6; }
   FX.floaters = FX.floaters.filter(f => f.life > 0);
   for (const k of FX.skid) k.life -= dt;
   FX.skid = FX.skid.filter(k => k.life > 0);
   S.shake = Math.max(0, S.shake - dt * 30);
+  // 震屏的相位。频率取 34 rad/s ≈ 5.4 赫兹：比"抖"慢、比"晃"快，读起来是挨了一下。
+  //
+  // 为什么从 52 降下来：52 rad/s 在 60 帧下每帧推进 0.87 弧度，那已经接近"每帧
+  // 两次采样一个周期"了——`shakeOffset` 的二倍频分量（16 赫兹）于是每帧跳 5.5 个
+  // 像素。那不是"镜头被撞了一下"，那是**高频振动**，也就是玩家说的"卡"。降下来
+  // 之后每帧只推进 0.57 弧度，位移是能被人眼跟上的曲线，力度交给振幅去说。
+  S.shakePhase = (S.shakePhase + dt * 34) % (Math.PI * 2);
   // 镜头那一拳回得**比震动慢**：砸下去要"顿"得住；抖完立刻归位，听起来只是噪音。
   // 闪比拳再慢一点点，因为"红闪"是给人看清"我被谁打了"的那零点几秒。
   S.punch = Math.max(0, S.punch - dt * 3.4);

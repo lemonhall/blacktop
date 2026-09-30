@@ -9,7 +9,18 @@
 import { WEAPONS } from "../../sim/weapons.mjs";
 import { S } from "./state.mjs";
 import { play } from "./audio.mjs";
-import { announce, burst, feed, floater, impact, ring, smoke } from "./fx.mjs";
+import { announce, burst, feed, floater, impact, ring, smoke, star } from "./fx.mjs";
+
+/**
+ * 命中那一格的拟声词。街机与美漫表达"这一下很重"从来不用数字，用的是字本身——
+ * 而"打中了却没有回音"这句线上反馈，一半的答案就在这几个字上。
+ *
+ * 轮着用、不随机：同一场里连着两下"砰!"会显得像贴图，四五个字轮一圈则像有人在打。
+ */
+const SFX = ["砰!", "咚!", "哐!", "嘭!", "啪!"];
+let sfxAt = 0;
+const sfx = () => SFX[sfxAt++ % SFX.length];
+
 /**
  * 一次快照里的事件全部放出来——**权威判定 → 本地表现**的唯一通道。
  * 位置和速度都不在这里算：模拟那边已经算完了，这里只决定"看起来多响"。
@@ -36,12 +47,27 @@ export function consumeEvents(events, view) {
         }
         break;
       case "hit":
+        // 打击感的三层：火花说"有东西亮了"，地面环说"这一下有多重"，**星芒**
+        // （`star`）才说"打实了"。线上原话是"就算踢到了，也没有视觉提醒"——
+        // 判定早就成立了，屏幕没有回答，这一颗星就是那个回答。
         burst(ev.x, ev.z, 1.1, "#ffd23f", 12, 16, 0.16);
         burst(ev.x, ev.z, 1.1, "#ff6a5a", 6, 10, 0.12);
         ring(ev.x, ev.z, 1.2, 0.55, "rgba(255,226,170,");
         floater(ev.x, ev.z, 2.3, `-${ev.d}`, "#ffd7a8", true);
-        if (ev.a === mine) { play("punch"); S.hitUntil = performance.now() + 140; impact(0.22); }
+        if (ev.a === mine) {
+          // 我打的人：星芒 + 拟声词 + 屏幕正中那个小小的准星回执（`overlays.mjs`）。
+          // 这三样都是"给我看的"，所以别人打别人的那十四下一条都不发——十五台车
+          // 每一下都炸一颗星，屏幕上就只剩星了。
+          star(ev.x, ev.z, 1.55, 1.05, "#fff6c8");
+          floater(ev.x, ev.z, 3.0, sfx(), "#ffe27a", true);
+          S.hitUntil = performance.now() + 170;
+          play("punch");
+          impact(0.3);
+          // 震屏**只给一点点**：打人是我主动的一下，晃太狠反而像挨了拳。
+          S.shake = Math.min(12, S.shake + 4);
+        }
         else if (ev.b === mine) {
+          star(ev.x, ev.z, 1.55, 1.05, "#ffbfa0");
           play("hurt"); S.shake = Math.min(14, S.shake + 7);
           impact(0.34, "255,90,78", 0.48);
         }
@@ -55,7 +81,18 @@ export function consumeEvents(events, view) {
       case "whiff":
         if (ev.a !== mine) break;
         play("whiff");
-        floater(ev.x, ev.z + (ev.dir > 0 ? 1.4 : -1.1), 1.85, "MISS", "#c8d3e6");
+        // `3` 是最高那一档字号（68 像素封顶、进场还能到 99，见 `render.floaterSize`），
+        // 只给 MISS 用：它是全场唯一一句"你刚才那一下什么都没碰到"的判决，以前挤在
+        // 普通跳字那一档里，混战当中一眼就滑过去了。颜色也提到最亮的一档白蓝——
+        // 它不必比"赏金 +400"更热闹，但它绝不能被漏掉：漏掉一次，玩家就会以为
+        // "我按了，游戏没理我"。
+        //
+        // 挂 1.35 秒（默认 1 秒）：这条反馈的意义在于"我看到了"，而不是"它出现过"。
+        //
+        // 顺带一小撮**冷色的空气**：命中是暖色星芒 + 火花，挥空是几粒淡蓝的碎屑。
+        // 两种结果的形状与颜色都不一样，扫一眼就能分开，不必等读完那四个字母。
+        burst(ev.x, ev.z, 1.6, "#9fc4e8", 5, 7, 0.09);
+        floater(ev.x, ev.z + (ev.dir > 0 ? 1.4 : -1.1), 1.85, "MISS", "#eaf4ff", 3, 1.35);
         break;
       // 捡起一件：只有"是我捡的"才值得报——别人捡东西的消息十五台车会刷屏。
       case "pick":
@@ -83,11 +120,25 @@ export function consumeEvents(events, view) {
         smoke(ev.x, ev.z, 0.5, "rgba(210,205,200,.45)", 8, 0.8);
         ring(ev.x, ev.z, 0.06, 1.4, "rgba(255,196,150,");
         const heavy = ev.s === "headon" || ev.s === "rear";
+        // 「我把人打下车了」是这套打法唯一的目标，也是上一版最缺的一句回音——
+        // 判定成立了，屏幕上只有一行小字，玩家根本不知道自己刚刚办成了什么。
+        // 所以这一条单独给一颗大星、一句大字，还要闪一下屏幕。
+        const byMe = ev.by > 0 && ev.by === mine;
+        if (byMe) {
+          star(ev.x, ev.z, 1.9, 1.9, "#fff2b8");
+          burst(ev.x, ev.z, 1.3, "#ffffff", 14, 20, 0.14);
+          S.hitUntil = performance.now() + 260;
+          impact(0.52, "255,238,200", 0.3);
+        }
         feed(`${nameOf(view, ev.a)} 摔车${heavy ? " · 撞得太狠" : ""}`, "#ffb08a");
         if (ev.a === mine) {
-          play("crash"); S.shake = Math.min(26, S.shake + 20);
+          play("crash"); S.shake = Math.min(24, S.shake + 15);
           impact(0.6, "255,126,96", 0.44);
           announce("摔车了", "扶起来接着骑", "#ff9f6a");
+        } else if (byMe) {
+          play("down");
+          S.shake = Math.min(18, S.shake + 6);
+          announce("击倒!", "这一下把他从车上打下来了", "#ffd23f");
         } else if (view && Math.abs(ev.z - (view.mine ? view.mine.z : 0)) < 90) {
           play("crash", 0.5);
         }
@@ -97,6 +148,9 @@ export function consumeEvents(events, view) {
       // 所以它才配一句播报，别的车就在头顶跳个钱数。
       case "fling": {
         const car = CAR_NAME[ev.kind] || "车";
+        // 踹飞是社会车辆"完蛋"的那一下，所以它配的是最大的一颗星——踢中了要有回音，
+        // 而"一脚把它踹上天"该有的回音不能比"打了人一拳"小。
+        star(ev.x, ev.z, 1.6, ev.kind === "dayun" ? 2.2 : 1.5, "#ffe9a0");
         burst(ev.x, ev.z, 1.5, "#ffd23f", 26, 26, 0.24);
         burst(ev.x, ev.z, 0.9, "#ff9f5a", 12, 18, 0.18);
         ring(ev.x, ev.z, 0.06, ev.kind === "dayun" ? 2.1 : 1.25);
@@ -106,7 +160,7 @@ export function consumeEvents(events, view) {
         play("fling");
         if (ev.a === mine) {
           const big = ev.kind === "dayun";
-          S.shake = Math.min(30, S.shake + (big ? 22 : 14));
+          S.shake = Math.min(26, S.shake + (big ? 15 : 9));
           // 踹飞是**主动**的爽，所以配暖白一闪：红闪留给"我挨了一下"，两者不能混。
           impact(big ? 0.85 : 0.5, "255,238,200", big ? 0.46 : 0.24);
         }

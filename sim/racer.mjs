@@ -39,6 +39,9 @@ export function newRacer(w, { id, kind, ownerId, name, bike = 0, palette = 0, sk
     attackCd: 0, hitCd: 0, swing: 0, nitroT: 0, nitroCd: 0,
     // 挂起的那一拳（见 `combat.syncAttack`）：`null` = 胳膊是空的。
     atk: null,
+    // 最近一次**前打**出手的世界时刻。撞车判定读它来兑现"这一脚先于撞车"
+    // （见 `spec.mjs` 的 `atkSave`）；回身打不记，因为它本来就够不到车头。
+    atkAt: -99,
     belt: [], wi: 0,
     lastHit: -99, downs: 0, kills: 0, crashes: 0, topV: 0, cash: 0,
     // `lap` 是"正在跑第几圈"（从 1 起），`z` 是总里程。两个都记：排名看 `z`，

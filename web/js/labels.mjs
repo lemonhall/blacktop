@@ -23,17 +23,47 @@ const canMeasure = ctx => typeof ctx.measureText === "function";
 
 const fontOf = px => `700 ${px}px system-ui, "Microsoft YaHei", sans-serif`;
 
+/** 描边有多粗。上下左右各留半个线宽，字才不会被贴图的边切成直角。 */
+const strokeOf = px => Math.max(2, px * 0.28);
+
 /** 现画：和以前一模一样的三笔（设字体 → 描边 → 填色）。 */
-function drawLive(ctx, x, y, text, color, px) {
+function drawLive(ctx, x, y, text, color, px, scale = 1) {
   ctx.save();
+  if (scale !== 1) { ctx.translate(x, y); ctx.scale(scale, scale); x = 0; y = 0; }
   ctx.font = fontOf(px);
   ctx.textAlign = "center";
-  ctx.lineWidth = Math.max(2, px * 0.28);
+  ctx.lineWidth = strokeOf(px);
   ctx.strokeStyle = "rgba(4,7,14,.85)";
   ctx.strokeText(text, x, y);
   ctx.fillStyle = color;
   ctx.fillText(text, x, y);
   ctx.restore();
+}
+
+/**
+ * 量一行字有多宽——**量之前必须先把字体设成要烘的那一号**。
+ *
+ * 这是"MISS 的 M 和 S 像被竖着切开"的根因：`measureText` 量的是 `ctx` **当前**的
+ * 字体，而这里以前从没设过。画布刚建好时那号字体是 `10px sans-serif`，于是不管
+ * 要烘的字有多大，量出来的宽度都是"10 像素下的那一行"——贴图比字形窄一大截，
+ * `fillText` 画出去的部分被画布边缘切掉，左右各少一块。字号越大切得越狠，而
+ * `MISS` 恰恰是跳字里字号最大的那几个之一。
+ *
+ * `save/restore` 不是装饰：这只是一次测量，不许把别人的字体改掉。
+ */
+function measureWidth(ctx, text, px) {
+  if (!canMeasure(ctx)) return 0;
+  try {
+    ctx.save();
+    ctx.font = fontOf(px);
+    const w = ctx.measureText(text).width;
+    ctx.restore();
+    return Number.isFinite(w) ? w : 0;
+  } catch {
+    // 有的假上下文只认 `measureText` 一个方法（老测试里的记账上下文就是这样）。
+    // 量不出来就当"量不出来"处理——退回现画，而不是把整帧炸掉。
+    return 0;
+  }
 }
 
 /** 一块文字的贴图：底边对齐用的是**基线上方 `top` 像素**，贴的时候照它摆回去。 */
@@ -47,18 +77,19 @@ function tile(ctx, text, color, px) {
     SHEET.set(key, hit);
     return hit;
   }
-  const metrics = canMeasure(ctx) ? ctx.measureText(text) : null;
-  const width = metrics && Number.isFinite(metrics.width) ? metrics.width : 0;
+  const width = measureWidth(ctx, text, px);
   if (!(width > 0)) return null;
-  const pad = Math.max(2, px * 0.28) + 2;
-  const top = Math.ceil(px * 1.05);
-  const canvas = offscreen(Math.ceil(width) + pad * 2, top + Math.ceil(px * 0.5));
+  // 留白 = 半个描边 + 2 像素。**只按 `measureText` 的宽度留是不够的**：那量的是
+  // 字形的**前进宽度**，不含描边往外扩的那半圈，也不含两侧的字距边白。
+  const pad = Math.ceil(strokeOf(px) / 2) + 3;
+  const top = Math.ceil(px * 1.08);
+  const canvas = offscreen(Math.ceil(width) + pad * 2, top + Math.ceil(px * 0.45));
   if (!canvas) return null;
   const c = canvas.getContext("2d");
   if (!c) return null;
   c.font = fontOf(px);
   c.textAlign = "center";
-  c.lineWidth = Math.max(2, px * 0.28);
+  c.lineWidth = strokeOf(px);
   c.strokeStyle = "rgba(4,7,14,.85)";
   c.strokeText(text, canvas.width / 2, top);
   c.fillStyle = color;
@@ -73,13 +104,17 @@ function tile(ctx, text, color, px) {
  * 在 `(x, y)` 画一行字。`y` 是**基线**——和 `ctx.fillText` 一个规矩，
  * 所以调用方原来怎么摆，现在还怎么摆。
  */
-export function label(ctx, x, y, text, color, size) {
+export function label(ctx, x, y, text, color, size, scale = 1) {
   // 字号按 1 像素取整（大字号按 2 像素）：不然"跟着距离连续变小的字号"会让每一个
   // 新尺寸都变成一张新贴图，缓存等于没做。
   const px = size >= 16 ? Math.round(size / 2) * 2 : Math.max(9, Math.round(size));
   const art = tile(ctx, text, color, px);
-  if (!art) { drawLive(ctx, x, y, text, color, px); return; }
-  ctx.drawImage(art.canvas, x - art.canvas.width / 2, y - art.top);
+  if (!art) { drawLive(ctx, x, y, text, color, px, scale); return; }
+  // `scale` 走的还是那张烘好的贴图，只是目标矩形放大——**绝不能拿放大后的字号去
+  // 再烘一张**：跳字是"跟着距离连续变大变小"的，每个新尺寸都烘一张，缓存等于没做。
+  if (scale === 1) { ctx.drawImage(art.canvas, x - art.canvas.width / 2, y - art.top); return; }
+  const w = art.canvas.width * scale, h = art.canvas.height * scale;
+  ctx.drawImage(art.canvas, x - w / 2, y - art.top * scale, w, h);
 }
 
 /** 测试与排错用。 */

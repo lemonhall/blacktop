@@ -87,6 +87,8 @@ function spriteFor(p, paletteIndex, detail, number, s, wobble) {
  * `swingBack` 把这一下镜像到另一侧——回身打身后的人，手臂朝车尾甩过去。
  * `weapon` 是手里那件家伙的编号（空串 = 空手）。`number` 是车背后的号牌数字：
  * 十五台车挤在一起的时候，"几号车"比配色更好认。
+ * `flash` 是"刚挨了一下"的强度（0~1）。它把整台车再贴一遍、压成纯白剪影——命中
+ * 反馈里最便宜也最有效的一笔：判定成立的那一帧，挨打的人**自己**在发光。
  */
 export function drawRider(ctx, o) {
   const s = o.s;
@@ -111,6 +113,28 @@ export function drawRider(ctx, o) {
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
     paintStatic(ctx, p, detail, number, sway);
+  }
+
+  /*
+   * 挨了一下：**整车闪白**。
+   *
+   * 做法是把同一台车再贴一遍，用 `filter: brightness(0) invert(1)` 把它压成纯白
+   * 剪影，再按 `flash` 给透明度。比"在画布上挖一个剪影"便宜得多（一次 `drawImage`），
+   * 而且 `save/restore` 保证这一笔不会漏到别人身上。颜色不换成红黄，是因为挨打的人
+   * 身上本来就五颜六色——只有**纯白**在任何配色上都读得出来。
+   */
+  if (o.flash > 0.02) {
+    ctx.save();
+    ctx.filter = "brightness(0) invert(1)";
+    ctx.globalAlpha = Math.min(0.9, o.flash * 0.95);
+    if (art) blit(ctx, s, art);
+    else {
+      ctx.scale(s, -s);
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      paintStatic(ctx, p, detail, number, sway);
+    }
+    ctx.restore();
   }
 
   // 会动的那些：出拳、手里的家伙、氮气。它们本来就只在少数几帧出现，

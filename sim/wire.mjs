@@ -112,6 +112,10 @@ function racerWire(r, mine) {
     rk: r.rank || 0, fi: r.finished ? 1 : 0, ft: r.finished ? r3(r.finishTime) : 0,
     d: r.downs, kl: r.kills, cr: r.crashes, ca: r.cash,
     wb: r1(r.wobble), sk: r.state === "wreck" ? r.wreckKind : "",
+    // `hl` 是最近一次挨打的世界时刻（秒）。**必须走线协议**：表现层要拿它做
+    // "挨了一下的那台车整车闪白"（`sprites.mjs` 的 `flash`），而这件事要是各算各的，
+    // 两个人看到的就变成"谁在发光"两个答案。一个数换一条命中反馈，划算。
+    hl: r2(r.lastHit),
   };
   // 家伙只在真有时才发：空手是最常见的状态，十五台车每帧各背一个空数组纯属浪费。
   if (r.belt && r.belt.length) {
@@ -197,6 +201,7 @@ export function decodeRacer(wire, roster) {
     belt: decodeBelt(wire.wp), wi: wire.wi | 0,
     rank: wire.rk, finished: !!wire.fi, finishTime: wire.ft,
     downs: wire.d, kills: wire.kl, crashes: wire.cr, cash: wire.ca, wobble: wire.wb,
+    lastHit: wire.hl === undefined ? -99 : wire.hl,
     ack: wire.ak | 0, ackZ: wire.az, ackX: wire.ax, queued: wire.q | 0,
     ackV: wire.av, ackLat: wire.alt,
   };

@@ -32,6 +32,9 @@ export function attack(w, r, dir = 1, pose = null) {
   r.attackCd = TUNE.attackCd * spec.cd;
   r.swing = TUNE.swing;
   r.stamina = Math.max(0, r.stamina - TUNE.attackCost);
+  // 出手的时刻。**只有前打记**：踹车那一脚只从前打出去（回身那一拳够不到车头），
+  // 而 `atkSave` 那条保命窗只对"我本来就想踹它"的人开门。
+  if (dir > 0) r.atkAt = w.time;
 
   // 充能的家伙挥一次少一次。用光当场丢掉并喊一声——不喊的话，玩家只会觉得
   // "这一下怎么没伤害"，而不知道手里的油桶已经空了。
@@ -110,7 +113,10 @@ function resolve(w, r, dir, aim, spec) {
 
   const target = aim.target;
   if (!target) return false;
-  const dmg = (TUNE.punchDmg + r.v * 0.12) * (1.15 / specOf(target).mass)
+  // 高速的那一拳更疼（`kickBonus`）：人是骑着车打的，"飞踢"和"停着抡"不该一个价。
+  // 门槛写在 30 m/s（108 km/h）——那是"真的在跑"的下限，低于它的人本来也追不上谁。
+  const speed = r.v > 30 ? TUNE.kickBonus : 0;
+  const dmg = (TUNE.punchDmg + r.v * 0.12 + speed) * (1.15 / specOf(target).mass)
     * spec.dmg * (dir > 0 ? 1 : TUNE.backDmg);
   target.stamina -= dmg;
   target.lastHit = w.time;

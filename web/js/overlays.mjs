@@ -43,6 +43,33 @@ export function drawOverlays(ctx, view, cam) {
     ctx.fillRect(0, 0, W, H);
   }
 
+  /*
+   * **命中回执**：屏幕正中那四道短短的斜线。
+   *
+   * 它是这一轮"打中了要有回音"里最不起眼、却最救命的一笔：玩家出手时眼睛盯着的是
+   * 车头正前方那一小块（也就是画面中心略偏下），所以"这一下到底打上没有"的答案
+   * 必须出现在**那里**，而不是出现在被打的那个人脚下——那个位置在混战里有一半
+   * 时间被别的车挡住。四道线从中心往外弹一下，200 毫秒收掉。
+   */
+  const hitLeft = S.hitUntil > 0 ? (S.hitUntil - performance.now()) / 200 : 0;
+  if (hitLeft > 0) {
+    const r = 12 + (1 - Math.min(1, hitLeft)) * 8;
+    ctx.save();
+    ctx.translate(W / 2, H * 0.56);
+    ctx.strokeStyle = `rgba(255,234,150,${Math.min(1, hitLeft * 1.8).toFixed(3)})`;
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    for (let i = 0; i < 4; i++) {
+      const a = Math.PI / 4 + i * Math.PI / 2;
+      const dx = Math.cos(a), dy = Math.sin(a);
+      ctx.beginPath();
+      ctx.moveTo(dx * r, dy * r);
+      ctx.lineTo(dx * (r + 7), dy * (r + 7));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   if (view.countdown > 0) {
     const n = Math.ceil(view.countdown);
     const text = n > 3 ? "准备" : n > 1 ? String(n - 1) : "GO!";

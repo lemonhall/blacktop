@@ -90,7 +90,7 @@
 $env:SMOKE_BASE='https://blacktop-api.lemonhall.me'; npm run smoke
 ```
 
-部署之后的自检记录（2026-09-30）：单元 **350 / 350**、冒烟 **40 / 40**、
+部署之后的自检记录（2026-09-30）：单元 **375 / 375**、冒烟 **40 / 40**、
 联调 **25 / 25** 通过，后两条都是在真链路上跑的（含多租户隔离、两个真人、
 对局中途补位、三圈跑完结算）。
 
@@ -123,7 +123,7 @@ curl.exe -X POST http://127.0.0.1:8790/v1/tenants -H "Authorization: Bearer $adm
 三条命令，各验一层，**都不碰线上账号、不花一分钱**：
 
 ```powershell
-npm test        # 350 项单元测试：共享内核、名册状态机、时间算术、线协议、家伙、画法契约
+npm test        # 375 项单元测试：共享内核、名册状态机、时间算术、线协议、家伙、画法契约
 npm run smoke   # 40 项冒烟：只用 HTTP + WebSocket 打一遍服务端契约（跑在已启动的 dev 上）
 npm run e2e     # 25 项联调：真 Chrome、两个客户端、从建房跑到结算（三圈的局约五分钟）
 npm run shots   # 顺手出图到 docs/shots/

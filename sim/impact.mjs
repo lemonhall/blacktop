@@ -13,7 +13,7 @@ import { KMH } from "./constants.mjs";
 import { resetQueue } from "./netcode.mjs";
 import { spillBelt } from "./pickups.mjs";
 import { CRITTERS, hitCritter } from "./critters.mjs";
-import { VEHICLES } from "./traffic.mjs";
+import { VEHICLES, fling, kickable } from "./traffic.mjs";
 import { TUNE } from "./spec.mjs";
 
 /** 撞车：撞上就跑不掉。对向 / 重卡额外加时——速度差是伤害的一部分。 */
@@ -42,12 +42,50 @@ export function collideTraffic(w, r) {
     const info = VEHICLES[v.kind];
     if (Math.abs(v.z - r.z) > (info.len + 2.2) * 0.5) continue;
     if (Math.abs(v.x - r.x) > info.wid * 0.5 + 0.55) continue;
+    // 车真的撞上来了——先问一句"你刚才是不是想踹它"。
+    if (kickSave(w, r, v)) return true;
     const heavy = v.dir === -1 || info.mass >= 2;
     r.hitCd = 1.1;
     wreck(w, r, { kind: v.dir === -1 ? "headon" : "rear", heavy });
     return true;
   }
   return false;
+}
+
+/**
+ * **这一脚先于撞车。**
+ *
+ * 线上原话：「我去踢车，经常被车撞倒，很不爽。」查下去发现判定本身没错——踹车的
+ * 窗口（`kickTarget`）几何上**完整地盖住**撞车窗口，同一格先跑 `attack` 再跑
+ * `collideTraffic`，所以"按得准"从来救得了人。救不了人的是另外两件事：
+ *
+ *   1. **`aimAt` 里畜生优先于车**。路中间一头牛、车贴着牛后面撞上来的那一格，
+ *      `syncAttack` 拿着那 0.42 秒的窗口去踹牛了，窗口用掉，人照样被车撞下车。
+ *   2. **车是在手挥出去之后才撞进来的**。`atkWindow` 每格重判一次，但它重判的是
+ *      `aimAt` 那套目标——判定顺序一变（比如牛），救人的那一条就断了。
+ *
+ * 所以这里加一条**直达**的兑现：只要"最近一次前打"还在 `TUNE.atkSave` 之内，
+ * 撞上来的这台车就按踹飞处理，不再按撞车处理。它不问牛、不问别人，只问一件事——
+ * 你刚才是不是冲着前面出拳了。
+ *
+ * 边界由 `kickX` 守着（横向超过一整个车道就不算"我在踹它"，那是真的撞上了），
+ * 而时长只有 `atkSave`（比 `atkWindow` 短），配合 `attackCd` 就盖不满——按住 J
+ * 连打并不能让谁在车流里无敌。
+ */
+function kickSave(w, r, v) {
+  if (r.state !== "ride" || !kickable(v.kind)) return false;
+  // `atkAt` 的哨兵是 `-99`（见 `racer.newRacer`）。**不能写成 `> 0`**：发车那一刻
+  // 恰好是 `w.time === 0`，按下去记的就是 0——写成 `> 0` 的话，开局那几秒的保命窗
+  // 会被自己判成"没按过"。
+  if (!(r.atkAt >= 0) || w.time - r.atkAt > TUNE.atkSave) return false;
+  if (Math.abs(v.x - r.x) > TUNE.kickX) return false;
+  const cash = (VEHICLES[v.kind] || {}).cash || 400;
+  if (!fling(w, v, Math.sign(v.x - r.x) || 1, r.v)) return false;
+  r.atk = null;
+  r.kills++;
+  r.cash += cash;
+  w.events.push({ k: "fling", a: r.id, kind: v.kind, pay: cash, z: v.z, x: v.x, w: r.x, s: "save" });
+  return true;
 }
 
 /**
